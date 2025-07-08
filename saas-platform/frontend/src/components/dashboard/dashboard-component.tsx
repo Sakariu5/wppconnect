@@ -17,6 +17,7 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/stores/auth';
 import { Button } from '@/components/ui/button';
 import {
@@ -39,6 +40,7 @@ import {
 
 export function DashboardComponent() {
   const { user, tenant, logout } = useAuth();
+  const router = useRouter();
 
   const handleLogout = () => {
     logout();
@@ -80,10 +82,20 @@ export function DashboardComponent() {
                 </p>
                 <p className="text-xs text-gray-600">{user?.email}</p>
               </div>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Salir
-              </Button>
+              <div className="flex space-x-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => router.push('/dashboard/chatbots')}
+                >
+                  <Bot className="h-4 w-4 mr-2" />
+                  Chatbots
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleLogout}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Salir
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -128,7 +140,12 @@ export function DashboardComponent() {
             <CardContent>
               <div className="text-2xl font-bold">0</div>
               <p className="text-xs text-muted-foreground">
-                Crea tu primer chatbot
+                <button 
+                  onClick={() => router.push('/dashboard/chatbots')}
+                  className="text-blue-600 hover:text-blue-700 underline"
+                >
+                  Crea tu primer chatbot
+                </button>
               </p>
             </CardContent>
           </Card>
@@ -177,7 +194,7 @@ export function DashboardComponent() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button className="w-full">
+              <Button className="w-full" onClick={() => router.push('/dashboard/whatsapp/connect')}>
                 <Plus className="h-4 w-4 mr-2" />
                 Conectar Número
               </Button>
@@ -195,7 +212,7 @@ export function DashboardComponent() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button className="w-full" variant="outline">
+              <Button className="w-full" variant="outline" onClick={() => router.push('/dashboard/chatbots/new')}>
                 <Plus className="h-4 w-4 mr-2" />
                 Nuevo Chatbot
               </Button>
@@ -224,11 +241,11 @@ export function DashboardComponent() {
                 Conecta tu WhatsApp y crea tu primer chatbot para empezar
               </p>
               <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                <Button>
+                <Button onClick={() => router.push('/dashboard/whatsapp/connect')}>
                   <Phone className="h-4 w-4 mr-2" />
                   Conectar WhatsApp
                 </Button>
-                <Button variant="outline">
+                <Button variant="outline" onClick={() => router.push('/dashboard/settings')}>
                   <Settings className="h-4 w-4 mr-2" />
                   Configurar Cuenta
                 </Button>
