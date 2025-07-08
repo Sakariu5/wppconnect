@@ -15,7 +15,7 @@
  * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { create, Whatsapp } from '@wppconnect-team/wppconnect';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, MessageType } from '@prisma/client';
 import { WebSocketService } from './websocket';
 import { BotEngineService } from './botEngine';
 
@@ -370,15 +370,15 @@ export class WhatsAppService {
     }
   }
 
-  private getMessageType(message: any): string {
-    if (message.type === 'image') return 'IMAGE';
-    if (message.type === 'document') return 'DOCUMENT';
-    if (message.type === 'audio') return 'AUDIO';
-    if (message.type === 'video') return 'VIDEO';
-    if (message.type === 'sticker') return 'STICKER';
-    if (message.type === 'location') return 'LOCATION';
-    if (message.type === 'contact') return 'CONTACT';
-    return 'TEXT';
+  private getMessageType(message: any): MessageType {
+    if (message.type === 'image') return MessageType.IMAGE;
+    if (message.type === 'document') return MessageType.DOCUMENT;
+    if (message.type === 'audio') return MessageType.AUDIO;
+    if (message.type === 'video') return MessageType.VIDEO;
+    if (message.type === 'sticker') return MessageType.STICKER;
+    if (message.type === 'location') return MessageType.LOCATION;
+    if (message.type === 'contact') return MessageType.CONTACT;
+    return MessageType.TEXT;
   }
 
   getConnection(sessionName: string): Whatsapp | undefined {

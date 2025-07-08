@@ -105,8 +105,8 @@ router.post('/register', async (req, res) => {
         role: result.user.role,
         tenantId: result.tenant.id,
       },
-      process.env.JWT_SECRET!,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      process.env.JWT_SECRET || 'fallback-secret',
+      { expiresIn: '7d' }
     );
 
     res.status(201).json({
@@ -128,7 +128,7 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
+    return res.status(500).json({ error: 'Registration failed' });
   }
 });
 
@@ -189,8 +189,8 @@ router.post('/login', async (req, res) => {
         role: user.role,
         tenantId: user.tenantId,
       },
-      process.env.JWT_SECRET!,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      process.env.JWT_SECRET || 'fallback-secret',
+      { expiresIn: '7d' }
     );
 
     res.json({
@@ -216,7 +216,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    return res.status(500).json({ error: 'Login failed' });
   }
 });
 
@@ -228,7 +228,10 @@ router.get('/verify', async (req, res) => {
       return res.status(401).json({ error: 'No token provided' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || 'fallback-secret'
+    ) as any;
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
       include: { tenant: true },
@@ -258,7 +261,7 @@ router.get('/verify', async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ error: 'Invalid token' });
   }
 });
 
