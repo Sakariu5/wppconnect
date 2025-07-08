@@ -1,104 +1,94 @@
+/*
+ * This file is part of WPPConnect.
+ *
+ * WPPConnect is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * WPPConnect is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
+ */
 'use client';
-import * as React from 'react';
+import React from 'react';
 import { cn } from '@/lib/utils';
 
-const Card = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => {
+interface CardProps {
+  className?: string;
+  children?: React.ReactNode;
+  [key: string]: any;
+}
+
+export const Card = ({ className, children, ...props }: CardProps) => {
   return (
     <div
-      ref={ref}
       className={cn(
-        'rounded-lg border bg-card text-card-foreground shadow-sm',
+        'rounded-lg border bg-white text-gray-900 shadow-sm',
         className
       )}
-      {...(props as any)}
-    />
+      {...props}
+    >
+      {children}
+    </div>
   );
-});
-// @ts-expect-error displayName is valid on forwardRef
-Card.displayName = 'Card';
+};
 
-const CardHeader = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => {
+export const CardHeader = ({ className, children, ...props }: CardProps) => {
   return (
     <div
-      ref={ref}
       className={cn('flex flex-col space-y-1.5 p-6', className)}
       {...props}
-    />
+    >
+      {children}
+    </div>
   );
-});
-// @ts-expect-error displayName is valid on forwardRef
-CardHeader.displayName = 'CardHeader';
+};
 
-const CardTitle = React.forwardRef<
-  HTMLHeadingElement,
-  React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => {
+export const CardTitle = ({ className, children, ...props }: CardProps) => {
   return (
     <h3
-      ref={ref}
-      className={cn(
-        'text-2xl font-semibold leading-none tracking-tight',
-        className
-      )}
+      className={cn('text-2xl font-semibold leading-none tracking-tight', className)}
       {...props}
-    />
+    >
+      {children}
+    </h3>
   );
-});
-// @ts-expect-error displayName is valid on forwardRef
-CardTitle.displayName = 'CardTitle';
+};
 
-const CardDescription = React.forwardRef<
-  HTMLParagraphElement,
-  React.HTMLAttributes<HTMLParagraphElement>
->(({ className, ...props }, ref) => {
+export const CardDescription = ({ className, children, ...props }: CardProps) => {
   return (
     <p
-      ref={ref}
-      className={cn('text-sm text-muted-foreground', className)}
+      className={cn('text-sm text-gray-500', className)}
       {...props}
-    />
+    >
+      {children}
+    </p>
   );
-});
-// @ts-expect-error displayName is valid on forwardRef
-CardDescription.displayName = 'CardDescription';
+};
 
-const CardContent = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => {
+export const CardContent = ({ className, children, ...props }: CardProps) => {
   return (
-    <div ref={ref} className={cn('p-6 pt-0', className)} {...props} />
+    <div 
+      className={cn('p-6 pt-0', className)} 
+      {...props}
+    >
+      {children}
+    </div>
   );
-});
-// @ts-expect-error displayName is valid on forwardRef
-CardContent.displayName = 'CardContent';
+};
 
-const CardFooter = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => {
+export const CardFooter = ({ className, children, ...props }: CardProps) => {
   return (
     <div
-      ref={ref}
       className={cn('flex items-center p-6 pt-0', className)}
       {...props}
-    />
+    >
+      {children}
+    </div>
   );
-});
-// @ts-expect-error displayName is valid on forwardRef
-CardFooter.displayName = 'CardFooter';
-
-export {
-  Card,
-  CardHeader,
-  CardFooter,
-  CardTitle,
-  CardDescription,
-  CardContent,
 };

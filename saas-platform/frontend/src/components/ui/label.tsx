@@ -14,13 +14,17 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
  */
+'use client';
+import React from 'react';
 import { cn } from "@/lib/utils";
 
-interface LabelProps extends React.LabelHTMLAttributes<HTMLLabelElement> {
+interface LabelProps {
   className?: string;
+  children?: any;
+  [key: string]: any;
 }
 
-export const Label = ({ className, ...props }: LabelProps) => {
+export const Label = ({ className, children, ...props }: LabelProps) => {
   return (
     <label
       className={cn(
@@ -28,6 +32,8 @@ export const Label = ({ className, ...props }: LabelProps) => {
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </label>
   );
 };

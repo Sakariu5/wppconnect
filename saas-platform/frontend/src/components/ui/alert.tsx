@@ -14,13 +14,24 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
  */
+'use client';
+import React from 'react';
 import { cn } from "@/lib/utils";
 
-interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {
+interface AlertProps {
+  className?: string;
   variant?: 'default' | 'destructive';
+  children?: any;
+  [key: string]: any;
 }
 
-export const Alert = ({ className, variant = 'default', ...props }: AlertProps) => {
+interface AlertDescriptionProps {
+  className?: string;
+  children?: any;
+  [key: string]: any;
+}
+
+export const Alert = ({ className, variant = 'default', children, ...props }: AlertProps) => {
   return (
     <div
       className={cn(
@@ -31,15 +42,19 @@ export const Alert = ({ className, variant = 'default', ...props }: AlertProps) 
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </div>
   );
 };
 
-export const AlertDescription = ({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => {
+export const AlertDescription = ({ className, children, ...props }: AlertDescriptionProps) => {
   return (
     <div
       className={cn("text-sm [&_p]:leading-relaxed", className)}
       {...props}
-    />
+    >
+      {children}
+    </div>
   );
 };
