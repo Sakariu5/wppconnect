@@ -35,9 +35,7 @@ export const Alert = ({ className, variant = 'default', ...props }: AlertProps) 
   );
 };
 
-interface AlertDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {}
-
-export const AlertDescription = ({ className, ...props }: AlertDescriptionProps) => {
+export const AlertDescription = ({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => {
   return (
     <div
       className={cn("text-sm [&_p]:leading-relaxed", className)}
