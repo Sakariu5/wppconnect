@@ -1,0 +1,282 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Tenants (White-label instances)
+model Tenant {
+  id          String   @id @default(cuid())
+  subdomain   String   @unique
+  name        String
+  logo        String?
+  primaryColor String  @default("#3B82F6")
+  secondaryColor String @default("#1F2937")
+  customDomain String?
+  isActive    Boolean  @default(true)
+  plan        Plan     @default(FREE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  users       User[]
+  whatsappInstances WhatsappInstance[]
+  chatbots    Chatbot[]
+  conversations Conversation[]
+  analytics   Analytics[]
+
+  @@map("tenants")
+}
+
+// Users
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      Role     @default(USER)
+  isActive  Boolean  @default(true)
+  lastLogin DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Tenant relationship
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Relationships
+  whatsappInstances WhatsappInstance[]
+  chatbots  Chatbot[]
+  conversations Conversation[]
+
+  @@map("users")
+}
+
+// WhatsApp Instances
+model WhatsappInstance {
+  id          String    @id @default(cuid())
+  sessionName String    @unique
+  phoneNumber String?
+  qrCode      String?
+  status      WhatsappStatus @default(DISCONNECTED)
+  webhookUrl  String?
+  isActive    Boolean   @default(true)
+  lastSeen    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relationships
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  chatbots  Chatbot[]
+  conversations Conversation[]
+  messages  Message[]
+
+  @@map("whatsapp_instances")
+}
+
+// Chatbots
+model Chatbot {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  triggerType TriggerType @default(KEYWORD)
+  triggerValue String
+  welcomeMessage String?
+  fallbackMessage String?
+  handoffToHuman Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  whatsappInstanceId String
+  whatsappInstance WhatsappInstance @relation(fields: [whatsappInstanceId], references: [id], onDelete: Cascade)
+
+  flows     BotFlow[]
+  conversations Conversation[]
+  analytics BotAnalytics[]
+
+  @@map("chatbots")
+}
+
+// Bot Flows (Wizard steps)
+model BotFlow {
+  id          String   @id @default(cuid())
+  name        String
+  stepOrder   Int
+  stepType    FlowStepType
+  triggerCondition String?
+  responseType ResponseType
+  responseContent String
+  responseMedia String?
+  buttons     Json?    // For button responses
+  listItems   Json?    // For list responses
+  conditions  Json?    // For conditional logic
+  nextStepId  String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  chatbotId String
+  chatbot   Chatbot @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  nextStep  BotFlow? @relation("FlowSteps", fields: [nextStepId], references: [id])
+  previousSteps BotFlow[] @relation("FlowSteps")
+
+  @@map("bot_flows")
+}
+
+// Conversations
+model Conversation {
+  id          String   @id @default(cuid())
+  contactName String?
+  contactPhone String
+  status      ConversationStatus @default(ACTIVE)
+  isHuman     Boolean  @default(false)
+  lastMessageAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  whatsappInstanceId String
+  whatsappInstance WhatsappInstance @relation(fields: [whatsappInstanceId], references: [id], onDelete: Cascade)
+  chatbotId String?
+  chatbot   Chatbot? @relation(fields: [chatbotId], references: [id])
+
+  messages  Message[]
+
+  @@map("conversations")
+}
+
+// Messages
+model Message {
+  id          String   @id @default(cuid())
+  content     String
+  messageType MessageType @default(TEXT)
+  mediaUrl    String?
+  isFromBot   Boolean  @default(false)
+  isRead      Boolean  @default(false)
+  timestamp   DateTime @default(now())
+  whatsappMessageId String?
+
+  // Relationships
+  conversationId String
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  whatsappInstanceId String
+  whatsappInstance WhatsappInstance @relation(fields: [whatsappInstanceId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+// Analytics
+model Analytics {
+  id          String   @id @default(cuid())
+  date        DateTime @default(now())
+  messagesSent Int     @default(0)
+  messagesReceived Int  @default(0)
+  conversationsStarted Int @default(0)
+  activeUsers Int      @default(0)
+  
+  // Relationships
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date])
+  @@map("analytics")
+}
+
+// Bot Analytics
+model BotAnalytics {
+  id          String   @id @default(cuid())
+  date        DateTime @default(now())
+  triggers    Int      @default(0)
+  completions Int      @default(0)
+  handoffs    Int      @default(0)
+  
+  // Relationships
+  chatbotId   String
+  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+
+  @@unique([chatbotId, date])
+  @@map("bot_analytics")
+}
+
+// Enums
+enum Plan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum WhatsappStatus {
+  CONNECTED
+  DISCONNECTED
+  CONNECTING
+  QR_CODE
+  ERROR
+}
+
+enum TriggerType {
+  KEYWORD
+  EXACT_MESSAGE
+  TIME_BASED
+  WELCOME
+}
+
+enum FlowStepType {
+  TRIGGER
+  RESPONSE
+  CONDITION
+  HANDOFF
+}
+
+enum ResponseType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  BUTTON
+  LIST
+  LOCATION
+}
+
+enum ConversationStatus {
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  AUDIO
+  VIDEO
+  STICKER
+  LOCATION
+  CONTACT
+}

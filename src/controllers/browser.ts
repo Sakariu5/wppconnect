@@ -14,7 +14,16 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
  */
-
+// Extend the Window interface to include WAPI, Store, and WPP for TypeScript
+export {};
+declare global {
+  interface Window {
+    WAPI: any;
+    Store: any;
+    WPP: any;
+  }
+}
+declare const WPP: any;
 import * as ChromeLauncher from 'chrome-launcher';
 import * as os from 'os';
 import * as path from 'path';

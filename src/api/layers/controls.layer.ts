@@ -14,6 +14,8 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
  */
+// Declaración global para evitar errores de tipado con WPP en funciones evaluadas en el navegador
+declare const WPP: any;
 
 import { EditMessageOptions } from '@wppconnect/wa-js/dist/chat/functions/editMessage';
 import { MsgKey } from '@wppconnect/wa-js/dist/whatsapp';

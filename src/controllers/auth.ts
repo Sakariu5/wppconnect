@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
  */
-
+declare const WPP: any;
 import * as puppeteer from 'puppeteer';
 import * as qrcode from 'qrcode-terminal';
 
