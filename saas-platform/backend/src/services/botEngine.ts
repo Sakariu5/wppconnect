@@ -1,3 +1,19 @@
+/*
+ * This file is part of WPPConnect.
+ *
+ * WPPConnect is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * WPPConnect is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import { PrismaClient } from '@prisma/client';
 import { WhatsAppService } from './whatsapp';
 
@@ -136,7 +152,7 @@ export class BotEngineService {
           );
           break;
 
-        case 'CONDITION':
+        case 'CONDITION': {
           const nextStep = await this.evaluateCondition(
             currentStep,
             message,
@@ -153,6 +169,7 @@ export class BotEngineService {
             );
           }
           break;
+        }
 
         case 'HANDOFF':
           await this.handoffToHuman(
@@ -320,9 +337,7 @@ export class BotEngineService {
           messageType: 'TEXT',
           isFromBot: true,
           conversationId,
-          whatsappInstanceId: (await prisma.whatsappInstance.findUnique({
-            where: { sessionName },
-          }))!.id,
+          // Removed whatsappInstanceId as it is not a valid property
         },
       });
     } catch (error) {
