@@ -17,7 +17,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
@@ -60,9 +59,9 @@ export default function ConnectWhatsAppPage() {
     // Simular proceso de conexión
     setStep('qr');
     
-    // Simular generación de QR
+    // Simular generación de QR (en producción se generaría un QR real)
     setTimeout(() => {
-      setQrCode('https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=WhatsAppConnection');
+      setQrCode('generated'); // Solo indicamos que el QR fue "generado"
     }, 1000);
   };
 
@@ -169,13 +168,14 @@ export default function ConnectWhatsAppPage() {
               <div className="mb-6">
                 {qrCode ? (
                   <div className="inline-block p-4 bg-white rounded-lg border">
-                    <Image 
-                      src={qrCode} 
-                      alt="QR Code" 
-                      width={192}
-                      height={192}
-                      className="mx-auto"
-                    />
+                    {/* Usando un placeholder para el QR - en producción se generaría un QR real */}
+                    <div className="w-48 h-48 mx-auto bg-gray-100 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300">
+                      <div className="text-center">
+                        <QrCode className="h-16 w-16 text-gray-400 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500 font-medium">Código QR</p>
+                        <p className="text-xs text-gray-400">WhatsApp Connection</p>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="w-48 h-48 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
