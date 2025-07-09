@@ -16,9 +16,11 @@
  */
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWhatsApp } from '@/hooks/useWhatsApp';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -31,19 +33,54 @@ import {
   MessageSquare,
   BarChart3,
   Plus,
-  Settings,
   Phone,
   Bot,
   Activity,
   LogOut,
+  Clock,
+  QrCode,
 } from 'lucide-react';
 
 export function DashboardComponent() {
   const { user, tenant, logout } = useAuth();
+  const { instances, connectedInstances, activeSessions, hasConnectedInstances, loading, recentActivity, refreshInstances, getSessionInfo } = useWhatsApp();
   const router = useRouter();
+  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [sessionDetails, setSessionDetails] = useState<any>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // Debug logs para verificar qué datos estamos recibiendo
+  useEffect(() => {
+    console.log('🎨 Dashboard recentActivity update:', recentActivity);
+    console.log('📱 Dashboard instances:', instances);
+    console.log('🟢 Connected instances:', connectedInstances);
+    console.log('⚡ Active sessions:', activeSessions);
+  }, [recentActivity, instances, connectedInstances, activeSessions]);
+
+  // Refresh automático al cargar el componente
+  useEffect(() => {
+    console.log('🚀 Dashboard mounted, refreshing data...');
+    refreshInstances();
+  }, [refreshInstances]);
 
   const handleLogout = () => {
     logout();
+  };
+
+  const handleSessionClick = async (instance: any) => {
+    if (instance.status === 'CONNECTED') {
+      setSelectedSession(instance);
+      setLoadingDetails(true);
+      
+      try {
+        const details = await getSessionInfo(instance.id);
+        setSessionDetails(details);
+      } catch (error) {
+        console.error('Error getting session details:', error);
+      } finally {
+        setLoadingDetails(false);
+      }
+    }
   };
 
   return (
@@ -122,9 +159,9 @@ export function DashboardComponent() {
               <Phone className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
+              <div className="text-2xl font-bold">{connectedInstances.length}</div>
               <p className="text-xs text-muted-foreground">
-                Ningún número conectado aún
+                {connectedInstances.length === 0 ? 'Ningún número conectado aún' : `${connectedInstances.length} número${connectedInstances.length > 1 ? 's' : ''} conectado${connectedInstances.length > 1 ? 's' : ''}`}
               </p>
             </CardContent>
           </Card>
@@ -180,26 +217,216 @@ export function DashboardComponent() {
           </Card>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* Actividad Reciente */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Clock className="h-5 w-5 mr-2" />
+              Actividad Reciente
+            </CardTitle>
+            <CardDescription>
+              Últimas conexiones y códigos QR generados
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Botón de refresh prominente */}
+            <div className="flex justify-between items-center mb-4">
+              <div className="text-sm text-gray-600">
+                {loading ? 'Actualizando datos...' : `Última actualización: ${new Date().toLocaleTimeString()}`}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refreshInstances}
+                disabled={loading}
+                className="flex items-center space-x-2"
+              >
+                <Activity className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                <span>{loading ? 'Actualizando...' : 'Refrescar'}</span>
+              </Button>
+            </div>
+            
+            <div className="space-y-6">
+              {/* DEBUG: Información visible para debugging */}
+              <div className="border rounded-lg p-4 bg-gray-50 border-gray-200 mb-4">
+                <h4 className="font-medium text-gray-900 mb-2">🔍 Debug Info (temporal)</h4>
+                <div className="text-sm space-y-1">
+                  <div>Total instancias: {instances.length}</div>
+                  <div>Instancias conectadas: {connectedInstances.length}</div>
+                  <div>Sesiones activas: {activeSessions.length}</div>
+                  <div>¿Tiene QR reciente?: {recentActivity.latestQr ? 'Sí' : 'No'}</div>
+                  <div>¿Tiene conexión reciente?: {recentActivity.latestConnection ? 'Sí' : 'No'}</div>
+                  {instances.length > 0 && (
+                    <div className="mt-2">
+                      <div className="font-medium">Instancias encontradas:</div>
+                      {instances.map((inst, i) => (
+                        <div key={i} className="ml-2 text-xs">
+                          {i + 1}. {inst.name} - {inst.status} - QR: {inst.qrCode ? 'Sí' : 'No'}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Último QR generado */}
+              {recentActivity.latestQr ? (
+                <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
+                  <div className="flex items-start space-x-4">
+                    <div className="flex-shrink-0">
+                      <QrCode className="h-6 w-6 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-medium text-blue-900">
+                          QR Code Generado
+                        </h3>
+                        <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                          {new Date(recentActivity.latestQr.timestamp).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-blue-700 mt-1">
+                        Sesión: {recentActivity.latestQr.sessionName}
+                      </p>
+                      <div className="mt-3 flex items-center space-x-4">
+                        <div className="bg-white p-2 rounded border">
+                          <Image
+                            src={recentActivity.latestQr.qrCode}
+                            alt="Código QR"
+                            width={128}
+                            height={128}
+                            className="w-32 h-32"
+                          />
+                        </div>
+                        <div className="text-xs text-blue-600">
+                          <p>📱 Escanea este código con WhatsApp</p>
+                          <p>⚡ Estado: Esperando conexión</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Última conexión */}
+              {recentActivity.latestConnection ? (
+                <div className="border rounded-lg p-4 bg-green-50 border-green-200">
+                  <div className="flex items-start space-x-4">
+                    <div className="flex-shrink-0">
+                      <Phone className="h-6 w-6 text-green-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-medium text-green-900">
+                          Sesión Conectada
+                        </h3>
+                        <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
+                          {new Date(recentActivity.latestConnection.timestamp).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-green-700 mt-1">
+                        📱 {recentActivity.latestConnection.phoneNumber}
+                      </p>
+                      <p className="text-sm text-green-700">
+                        🏷️ {recentActivity.latestConnection.sessionName}
+                      </p>
+                      <div className="mt-2 flex items-center space-x-4 text-xs">
+                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded">
+                          ✅ Conectado y activo
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Si no hay actividad reciente */}
+              {!recentActivity.latestQr && !recentActivity.latestConnection && (
+                <div className="text-center py-8 text-gray-500">
+                  <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <h3 className="font-medium text-gray-700 mb-2">
+                    Sin actividad reciente
+                  </h3>
+                  <p className="text-sm">
+                    Conecta tu primer número de WhatsApp para ver la actividad aquí
+                  </p>
+                  <Button 
+                    className="mt-4" 
+                    onClick={() => router.push('/dashboard/whatsapp/connect')}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Conectar WhatsApp
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* WhatsApp Sessions Dashboard */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* Quick Actions */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Phone className="h-5 w-5 mr-2" />
-                Conectar WhatsApp
+                WhatsApp
               </CardTitle>
               <CardDescription>
-                Conecta tu número de WhatsApp escaneando un código QR
+                Gestiona tus conexiones de WhatsApp
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button className="w-full" onClick={() => router.push('/dashboard/whatsapp/connect')}>
-                <Plus className="h-4 w-4 mr-2" />
-                Conectar Número
-              </Button>
+              <div className="space-y-3">
+                <Button 
+                  className="w-full" 
+                  onClick={() => router.push('/dashboard/whatsapp/connect')}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Conectar Número
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={refreshInstances}
+                  disabled={loading}
+                >
+                  {loading ? 'Actualizando...' : 'Actualizar Estado'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
+          {/* Session Statistics */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <BarChart3 className="h-5 w-5 mr-2" />
+                Estadísticas
+              </CardTitle>
+              <CardDescription>
+                Resumen de tus sesiones
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Total Sesiones:</span>
+                  <span className="font-medium">{instances.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Conectadas:</span>
+                  <span className="font-medium text-green-600">{connectedInstances.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Activas:</span>
+                  <span className="font-medium text-blue-600">{activeSessions.length}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quick Create */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -207,51 +434,214 @@ export function DashboardComponent() {
                 Crear Chatbot
               </CardTitle>
               <CardDescription>
-                Usa nuestro wizard visual para crear flujos de conversación
+                Automatiza conversaciones
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button className="w-full" variant="outline" onClick={() => router.push('/dashboard/chatbots/new')}>
+              <Button 
+                className="w-full" 
+                variant="outline" 
+                onClick={() => router.push('/dashboard/chatbots/new')}
+                disabled={!hasConnectedInstances}
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Nuevo Chatbot
               </Button>
+              {!hasConnectedInstances && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Necesitas conectar WhatsApp primero
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Recent Activity */}
-        <Card>
+        {/* Sessions List */}
+        <Card className="mb-8">
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <BarChart3 className="h-5 w-5 mr-2" />
-              Actividad Reciente
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center">
+                <Phone className="h-5 w-5 mr-2" />
+                Sesiones de WhatsApp
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refreshInstances}
+                disabled={loading}
+              >
+                <Activity className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
             </CardTitle>
             <CardDescription>
-              Resumen de la actividad en tu plataforma
+              Estado detallado de todas tus conexiones
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-12">
-              <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Sin actividad aún
-              </h3>
-              <p className="text-gray-600 mb-4">
-                Conecta tu WhatsApp y crea tu primer chatbot para empezar
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            {instances.length === 0 ? (
+              <div className="text-center py-8">
+                <Phone className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  Sin conexiones de WhatsApp
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Conecta tu primer número de WhatsApp para empezar
+                </p>
                 <Button onClick={() => router.push('/dashboard/whatsapp/connect')}>
-                  <Phone className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4 mr-2" />
                   Conectar WhatsApp
                 </Button>
-                <Button variant="outline" onClick={() => router.push('/dashboard/settings')}>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Configurar Cuenta
-                </Button>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-4">
+                {instances.map((instance) => {
+                  const activeSession = activeSessions.find(
+                    (session) => session.instanceId === instance.id
+                  );
+                  
+                  return (
+                    <div
+                      key={instance.id}
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                        instance.status === 'CONNECTED' 
+                          ? 'border-green-200 bg-green-50 hover:bg-green-100'
+                          : instance.status === 'ERROR'
+                          ? 'border-red-200 bg-red-50'
+                          : 'border-gray-200 bg-gray-50'
+                      }`}
+                      onClick={() => handleSessionClick(instance)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-3 h-3 rounded-full ${
+                            instance.status === 'CONNECTED' ? 'bg-green-500' :
+                            instance.status === 'ERROR' ? 'bg-red-500' :
+                            instance.status === 'QR_CODE' ? 'bg-yellow-500' :
+                            'bg-gray-500'
+                          }`} />
+                          <div>
+                            <h3 className="font-medium">{instance.name}</h3>
+                            <p className="text-sm text-gray-600">
+                              {instance.phone || instance.phoneNumber || 'Sin número'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            instance.status === 'CONNECTED' ? 'bg-green-100 text-green-800' :
+                            instance.status === 'ERROR' ? 'bg-red-100 text-red-800' :
+                            instance.status === 'QR_CODE' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {instance.status === 'CONNECTED' ? 'Conectado' :
+                             instance.status === 'ERROR' ? 'Error' :
+                             instance.status === 'QR_CODE' ? 'Esperando QR' :
+                             instance.status}
+                          </span>
+                          {activeSession && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              {activeSession.isOnline ? '🟢 En línea' : '🔴 Fuera de línea'}
+                              {activeSession.batteryLevel && ` • ${activeSession.batteryLevel}%`}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {instance.status === 'CONNECTED' && activeSession && (
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">Estado:</span>
+                              <p className="font-medium">
+                                {activeSession.isConnected ? 'Activo' : 'Inactivo'}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">En línea:</span>
+                              <p className="font-medium">
+                                {activeSession.isOnline ? 'Sí' : 'No'}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Batería:</span>
+                              <p className="font-medium">
+                                {activeSession.batteryLevel ? `${activeSession.batteryLevel}%` : 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="mt-2 text-xs text-gray-500">
+                        Actualizado: {new Date(instance.updatedAt).toLocaleString()}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Session Details Modal */}
+        {selectedSession && sessionDetails && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Detalles de {selectedSession.name}</CardTitle>
+              <CardDescription>
+                Información técnica detallada de la sesión
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loadingDetails ? (
+                <div className="text-center py-4">Cargando detalles...</div>
+              ) : (
+                <div className="space-y-4">
+                  {sessionDetails.hostDevice && (
+                    <div>
+                      <h4 className="font-medium mb-2">Información del Dispositivo</h4>
+                      <div className="bg-gray-50 p-3 rounded text-sm">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>Número: {sessionDetails.hostDevice.wid?.user || 'N/A'}</div>
+                          <div>Plataforma: {sessionDetails.hostDevice.platform || 'N/A'}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div>
+                    <h4 className="font-medium mb-2">Estado de Conexión</h4>
+                    <div className="bg-gray-50 p-3 rounded text-sm">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>Conectado: {sessionDetails.isConnected ? '✅' : '❌'}</div>
+                        <div>En línea: {sessionDetails.isOnline ? '✅' : '❌'}</div>
+                        <div>Autenticado: {sessionDetails.isAuthenticated ? '✅' : '❌'}</div>
+                        <div>Logged In: {sessionDetails.isLoggedIn ? '✅' : '❌'}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {sessionDetails.waVersion && (
+                    <div>
+                      <h4 className="font-medium mb-2">Información Técnica</h4>
+                      <div className="bg-gray-50 p-3 rounded text-sm">
+                        <div>Versión WhatsApp: {sessionDetails.waVersion}</div>
+                        <div>MultiDevice: {sessionDetails.isMultiDevice ? 'Sí' : 'No'}</div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedSession(null)}
+                  >
+                    Cerrar Detalles
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   );

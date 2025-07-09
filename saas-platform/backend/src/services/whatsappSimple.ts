@@ -700,4 +700,51 @@ export class WhatsAppService {
   getAllConnections(): Map<string, Whatsapp> {
     return this.connections;
   }
+
+  /**
+   * Get all active session names
+   */
+  getActiveSessionNames(): string[] {
+    return Array.from(this.connections.keys());
+  }
+
+  /**
+   * Get session information for all active sessions
+   */
+  async getAllSessionsInfo(): Promise<Array<{
+    sessionName: string;
+    isConnected: boolean;
+    isOnline: boolean;
+    phoneNumber: string | null;
+    batteryLevel: number | null;
+    connectionState: any;
+  }>> {
+    const sessions = [];
+    
+    for (const [sessionName, client] of this.connections) {
+      try {
+        const sessionInfo = {
+          sessionName,
+          isConnected: await client.isConnected().catch(() => false),
+          isOnline: await client.isOnline().catch(() => false),
+          phoneNumber: await this.getSessionPhone(sessionName),
+          batteryLevel: await client.getBatteryLevel().catch(() => null),
+          connectionState: await client.getConnectionState().catch(() => null),
+        };
+        sessions.push(sessionInfo);
+      } catch (error) {
+        console.error(`Error getting info for session ${sessionName}:`, error);
+        sessions.push({
+          sessionName,
+          isConnected: false,
+          isOnline: false,
+          phoneNumber: null,
+          batteryLevel: null,
+          connectionState: null,
+        });
+      }
+    }
+    
+    return sessions;
+  }
 }

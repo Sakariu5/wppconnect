@@ -248,4 +248,242 @@ router.delete('/instances/:id', async (req: TenantRequest, res) => {
   }
 });
 
+// Get all WhatsApp instances with their current status
+router.get('/instances/status', async (req: TenantRequest, res) => {
+  try {
+    console.log(
+      `📋 Getting all instances status for tenant: ${req.tenant!.id}`
+    );
+    
+    const instances = await prisma.whatsappInstance.findMany({
+      where: { tenantId: req.tenant!.id },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        status: true,
+        updatedAt: true,
+        createdAt: true,
+      },
+    });
+
+    console.log(`📊 Found ${instances.length} instances`);
+    instances.forEach((instance) => {
+      console.log(
+        `   - ${instance.name}: ${instance.status} (${
+          instance.phone || 'No phone'
+        })`
+      );
+    });
+
+    res.json(instances);
+  } catch (error) {
+    console.error('Error getting instances status:', error);
+    res.status(500).json({ error: 'Failed to get instances status' });
+  }
+});
+
+// Get detailed session information
+router.get('/instances/:id/session-info', async (req: TenantRequest, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`📱 Getting detailed session info for instance: ${id}`);
+
+    const instance = await prisma.whatsappInstance.findFirst({
+      where: {
+        id,
+        tenantId: req.tenant!.id,
+      },
+    });
+
+    if (!instance) {
+      return res.status(404).json({ error: 'WhatsApp instance not found' });
+    }
+
+    // Get detailed session information if connected
+    let sessionInfo: any = {
+      basic: {
+        id: instance.id,
+        name: instance.name,
+        phone: instance.phone,
+        status: instance.status,
+        createdAt: instance.createdAt,
+        updatedAt: instance.updatedAt,
+      },
+    };
+
+    if (instance.status === 'CONNECTED') {
+      try {
+        const connection = whatsAppService.getConnection(instance.name);
+        if (connection) {
+          console.log(`🔍 Getting detailed info for connected session: ${instance.name}`);
+
+          // Get host device information
+          try {
+            const hostDevice = await connection.getHostDevice();
+            sessionInfo.hostDevice = hostDevice;
+          } catch (error) {
+            console.error('Error getting host device:', error);
+            sessionInfo.hostDevice = null;
+          }
+
+          // Get connection state
+          try {
+            const connectionState = await connection.getConnectionState();
+            sessionInfo.connectionState = connectionState;
+          } catch (error) {
+            console.error('Error getting connection state:', error);
+            sessionInfo.connectionState = null;
+          }
+
+          // Check if connected
+          try {
+            const isConnected = await connection.isConnected();
+            sessionInfo.isConnected = isConnected;
+          } catch (error) {
+            console.error('Error checking connection:', error);
+            sessionInfo.isConnected = false;
+          }
+
+          // Check if online
+          try {
+            const isOnline = await connection.isOnline();
+            sessionInfo.isOnline = isOnline;
+          } catch (error) {
+            console.error('Error checking online status:', error);
+            sessionInfo.isOnline = false;
+          }
+
+          // Check if authenticated
+          try {
+            const isAuthenticated = await connection.isAuthenticated();
+            sessionInfo.isAuthenticated = isAuthenticated;
+          } catch (error) {
+            console.error('Error checking authentication:', error);
+            sessionInfo.isAuthenticated = false;
+          }
+
+          // Check if logged in
+          try {
+            const isLoggedIn = await connection.isLoggedIn();
+            sessionInfo.isLoggedIn = isLoggedIn;
+          } catch (error) {
+            console.error('Error checking login status:', error);
+            sessionInfo.isLoggedIn = false;
+          }
+
+          // Get battery level
+          try {
+            const batteryLevel = await connection.getBatteryLevel();
+            sessionInfo.batteryLevel = batteryLevel;
+          } catch (error) {
+            console.error('Error getting battery level:', error);
+            sessionInfo.batteryLevel = null;
+          }
+
+          // Get WhatsApp version
+          try {
+            const waVersion = await connection.getWAVersion();
+            sessionInfo.waVersion = waVersion;
+          } catch (error) {
+            console.error('Error getting WA version:', error);
+            sessionInfo.waVersion = null;
+          }
+
+          // Check if multidevice
+          try {
+            const isMultiDevice = await connection.isMultiDevice();
+            sessionInfo.isMultiDevice = isMultiDevice;
+          } catch (error) {
+            console.error('Error checking multidevice:', error);
+            sessionInfo.isMultiDevice = null;
+          }
+        } else {
+          console.log(`⚠️ No active connection found for session: ${instance.name}`);
+          sessionInfo.error = 'No active connection found';
+        }
+      } catch (error) {
+        console.error('Error getting session details:', error);
+        sessionInfo.error = 'Failed to get session details';
+      }
+    }
+
+    res.json(sessionInfo);
+  } catch (error) {
+    console.error('Error getting session info:', error);
+    res.status(500).json({ error: 'Failed to get session information' });
+  }
+});
+
+// Check if session is ready
+router.get('/instances/:id/ready', async (req: TenantRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    const instance = await prisma.whatsappInstance.findFirst({
+      where: {
+        id,
+        tenantId: req.tenant!.id,
+      },
+    });
+
+    if (!instance) {
+      return res.status(404).json({ error: 'WhatsApp instance not found' });
+    }
+
+    const isReady = await whatsAppService.isSessionReady(instance.name);
+    
+    res.json({
+      instanceId: id,
+      sessionName: instance.name,
+      isReady,
+      status: instance.status,
+    });
+  } catch (error) {
+    console.error('Error checking session ready status:', error);
+    res.status(500).json({ error: 'Failed to check session status' });
+  }
+});
+
+// Get all active sessions information
+router.get('/sessions/active', async (req: TenantRequest, res) => {
+  try {
+    console.log('📱 Getting all active sessions information');
+    
+    const activeSessions = await whatsAppService.getAllSessionsInfo();
+    
+    // Filter sessions for this tenant
+    const tenantInstances = await prisma.whatsappInstance.findMany({
+      where: { tenantId: req.tenant?.id },
+      select: { name: true, id: true, phone: true, status: true }
+    });
+
+    const tenantSessionNames = tenantInstances.map(i => i.name);
+    const filteredSessions = activeSessions.filter(session => 
+      tenantSessionNames.includes(session.sessionName)
+    );
+
+    // Merge with database information
+    const enrichedSessions = filteredSessions.map(session => {
+      const dbInstance = tenantInstances.find(i => i.name === session.sessionName);
+      return {
+        ...session,
+        instanceId: dbInstance?.id,
+        dbStatus: dbInstance?.status,
+        dbPhone: dbInstance?.phone,
+      };
+    });
+
+    res.json({
+      totalActiveSessions: whatsAppService.getActiveSessionNames().length,
+      tenantSessions: enrichedSessions.length,
+      sessions: enrichedSessions,
+    });
+  } catch (error) {
+    console.error('Error getting active sessions:', error);
+    res.status(500).json({ error: 'Failed to get active sessions' });
+  }
+});
+
 export default router;

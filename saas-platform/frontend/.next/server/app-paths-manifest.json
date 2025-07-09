@@ -1,6 +1,6 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
   "/dashboard/whatsapp/connect/page": "app/dashboard/whatsapp/connect/page.js",
-  "/dashboard/chatbots/new/page": "app/dashboard/chatbots/new/page.js"
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/chatbots/new/page": "app/dashboard/chatbots/new/page.js",
+  "/login/page": "app/login/page.js"
 }
