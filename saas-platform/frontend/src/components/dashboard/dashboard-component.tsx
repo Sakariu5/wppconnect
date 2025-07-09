@@ -39,15 +39,23 @@ import {
   LogOut,
   Clock,
   QrCode,
+  Send,
 } from 'lucide-react';
 
 export function DashboardComponent() {
-  const { user, tenant, logout } = useAuth();
-  const { instances, connectedInstances, activeSessions, hasConnectedInstances, loading, recentActivity, refreshInstances, getSessionInfo } = useWhatsApp();
+  const { user, tenant, logout, token } = useAuth();
+  const { instances, connectedInstances, activeSessions, hasConnectedInstances, loading, recentActivity, rateLimitInfo, refreshInstances, getSessionInfo } = useWhatsApp();
   const router = useRouter();
   const [selectedSession, setSelectedSession] = useState<any>(null);
   const [sessionDetails, setSessionDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // Estados para envío de mensajes
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>('');
+  const [messageRecipient, setMessageRecipient] = useState<string>('');
+  const [messageText, setMessageText] = useState<string>('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [sendResult, setSendResult] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   // Debug logs para verificar qué datos estamos recibiendo
   useEffect(() => {
@@ -80,6 +88,118 @@ export function DashboardComponent() {
       } finally {
         setLoadingDetails(false);
       }
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!selectedInstanceId || !messageRecipient || !messageText) {
+      setSendResult({ type: 'error', message: 'Por favor completa todos los campos' });
+      return;
+    }
+
+    // Verificar rate limiting
+    if (rateLimitInfo.isRateLimited && rateLimitInfo.nextRetryTime) {
+      const remainingTime = Math.ceil((rateLimitInfo.nextRetryTime.getTime() - Date.now()) / 1000);
+      if (remainingTime > 0) {
+        setSendResult({ 
+          type: 'error', 
+          message: `⏳ Rate limited. Reintenta en ${remainingTime} segundos` 
+        });
+        return;
+      }
+    }
+
+    // Formatear el número: remover todos los caracteres que no sean números
+    const cleanNumber = messageRecipient.replace(/\D/g, '');
+    
+    // Validación más flexible para diferentes países
+    if (cleanNumber.length < 10 || cleanNumber.length > 15) {
+      setSendResult({ 
+        type: 'error', 
+        message: 'Formato incorrecto. Usa: código país + número (10-15 dígitos total)' 
+      });
+      return;
+    }
+
+    // Validación específica para México (más común)
+    if (cleanNumber.startsWith('52') && cleanNumber.length !== 12) {
+      setSendResult({ 
+        type: 'error', 
+        message: 'Para México usa: 52 + 10 dígitos (ej: 5219876543210)' 
+      });
+      return;
+    }
+
+    console.log('📤 Sending message:', {
+      instanceId: selectedInstanceId,
+      originalRecipient: messageRecipient,
+      cleanRecipient: cleanNumber,
+      message: messageText
+    });
+
+    setSendingMessage(true);
+    setSendResult(null);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const url = `${apiUrl}/api/whatsapp/instances/${selectedInstanceId}/send-message`;
+      console.log('📍 Send message URL:', url);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: cleanNumber, // Usar el número limpio
+          message: messageText,
+          type: 'text'
+        }),
+      });
+
+      console.log('📡 Response status:', response.status);
+
+      if (response.ok) {
+        const result = await response.json();
+        setSendResult({ type: 'success', message: '✅ Mensaje enviado exitosamente!' });
+        setMessageText('');
+        console.log('✅ Message sent successfully:', result);
+      } else if (response.status === 429) {
+        setSendResult({ 
+          type: 'error', 
+          message: '⚠️ Demasiadas solicitudes. Espera un momento antes de reintentar.' 
+        });
+      } else if (response.status === 503) {
+        // Session being reconnected
+        const errorData = await response.json();
+        if (errorData.action === 'reconnecting') {
+          setSendResult({ 
+            type: 'error', 
+            message: '🔄 Sesión desconectada. Reconectando automáticamente... Inténtalo en 30 segundos.' 
+          });
+          // Auto-refresh instances in 10 seconds to get updated status
+          setTimeout(() => {
+            refreshInstances();
+          }, 10000);
+        } else {
+          setSendResult({ type: 'error', message: errorData.error || 'Servicio temporalmente no disponible' });
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('❌ Send message error response:', errorText);
+        try {
+          const error = JSON.parse(errorText);
+          setSendResult({ type: 'error', message: error.error || 'Error enviando mensaje' });
+        } catch {
+          setSendResult({ type: 'error', message: `Error HTTP ${response.status}: ${errorText}` });
+        }
+      }
+    } catch (error) {
+      console.error('❌ Send message network error:', error);
+      setSendResult({ type: 'error', message: `Error de conexión: ${error.message}` });
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -233,16 +353,25 @@ export function DashboardComponent() {
             <div className="flex justify-between items-center mb-4">
               <div className="text-sm text-gray-600">
                 {loading ? 'Actualizando datos...' : `Última actualización: ${new Date().toLocaleTimeString()}`}
+                {rateLimitInfo.isRateLimited && rateLimitInfo.nextRetryTime && (
+                  <div className="text-orange-600 text-xs mt-1">
+                    ⚠️ Rate limited - Siguiente actualización disponible en: {Math.max(0, Math.ceil((rateLimitInfo.nextRetryTime.getTime() - Date.now()) / 1000))}s
+                  </div>
+                )}
               </div>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={refreshInstances}
-                disabled={loading}
+                disabled={loading || (rateLimitInfo.isRateLimited && rateLimitInfo.nextRetryTime && rateLimitInfo.nextRetryTime.getTime() > Date.now())}
                 className="flex items-center space-x-2"
               >
                 <Activity className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                <span>{loading ? 'Actualizando...' : 'Refrescar'}</span>
+                <span>
+                  {loading ? 'Actualizando...' : 
+                   rateLimitInfo.isRateLimited ? 'Esperando...' : 
+                   'Refrescar'}
+                </span>
               </Button>
             </div>
             
@@ -254,8 +383,8 @@ export function DashboardComponent() {
                   <div>Total instancias: {instances.length}</div>
                   <div>Instancias conectadas: {connectedInstances.length}</div>
                   <div>Sesiones activas: {activeSessions.length}</div>
-                  <div>¿Tiene QR reciente?: {recentActivity.latestQr ? 'Sí' : 'No'}</div>
-                  <div>¿Tiene conexión reciente?: {recentActivity.latestConnection ? 'Sí' : 'No'}</div>
+                  <div>¿Tiene QR reciente?: {recentActivity?.latestQr ? 'Sí' : 'No'}</div>
+                  <div>¿Tiene conexión reciente?: {recentActivity?.latestConnection ? 'Sí' : 'No'}</div>
                   {instances.length > 0 && (
                     <div className="mt-2">
                       <div className="font-medium">Instancias encontradas:</div>
@@ -270,7 +399,7 @@ export function DashboardComponent() {
               </div>
 
               {/* Último QR generado */}
-              {recentActivity.latestQr ? (
+              {recentActivity?.latestQr ? (
                 <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
                   <div className="flex items-start space-x-4">
                     <div className="flex-shrink-0">
@@ -309,7 +438,7 @@ export function DashboardComponent() {
               ) : null}
 
               {/* Última conexión */}
-              {recentActivity.latestConnection ? (
+              {recentActivity?.latestConnection ? (
                 <div className="border rounded-lg p-4 bg-green-50 border-green-200">
                   <div className="flex items-start space-x-4">
                     <div className="flex-shrink-0">
@@ -341,7 +470,7 @@ export function DashboardComponent() {
               ) : null}
 
               {/* Si no hay actividad reciente */}
-              {!recentActivity.latestQr && !recentActivity.latestConnection && (
+              {!recentActivity?.latestQr && !recentActivity?.latestConnection && (
                 <div className="text-center py-8 text-gray-500">
                   <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                   <h3 className="font-medium text-gray-700 mb-2">
@@ -362,6 +491,120 @@ export function DashboardComponent() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Enviar Mensaje Rápido */}
+        {connectedInstances.length > 0 && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Send className="h-5 w-5 mr-2" />
+                Enviar Mensaje Rápido
+              </CardTitle>
+              <CardDescription>
+                Envía un mensaje de prueba a cualquier contacto
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Selector de instancia */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Seleccionar número de WhatsApp:
+                  </label>
+                  <select
+                    value={selectedInstanceId}
+                    onChange={(e) => setSelectedInstanceId(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Selecciona una sesión conectada</option>
+                    {connectedInstances.map((instance) => (
+                      <option key={instance.id} value={instance.id}>
+                        {instance.name} - {instance.phone || instance.phoneNumber || 'Sin número'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Número destino */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Número destino (con código de país):
+                  </label>
+                  <input
+                    type="text"
+                    value={messageRecipient}
+                    onChange={(e) => setMessageRecipient(e.target.value)}
+                    placeholder="Ej: 5219876543210, 12345678901, etc."
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <div className="mt-1 text-xs text-gray-500">
+                    <div className="mb-2">
+                      <strong>Formatos válidos:</strong>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>🇲🇽 México: 52 + 10 dígitos</div>
+                      <div>🇺🇸 EE.UU.: 1 + 10 dígitos</div>
+                      <div>🇪🇸 España: 34 + 9 dígitos</div>
+                      <div>🌍 Otros: Código país + número</div>
+                    </div>
+                    {messageRecipient && (
+                      <div className="mt-2 p-2 bg-gray-50 rounded border text-xs">
+                        {(() => {
+                          const clean = messageRecipient.replace(/\D/g, '');
+                          if (!clean) return '⚪ Ingresa un número';
+                          if (clean.length < 10) return '🔴 Muy corto (mínimo 10 dígitos)';
+                          if (clean.length > 15) return '🔴 Muy largo (máximo 15 dígitos)';
+                          if (clean.startsWith('52') && clean.length === 12) return '🟢 México válido';
+                          if (clean.startsWith('1') && clean.length === 11) return '🟢 EE.UU./Canadá válido';
+                          if (clean.startsWith('34') && clean.length === 11) return '🟢 España válido';
+                          if (clean.length >= 10 && clean.length <= 15) return '🟡 Formato internacional';
+                          return '🔴 Formato incorrecto';
+                        })()}
+                        <br/>
+                        <span className="text-blue-600">📱 Se enviará a: +{messageRecipient.replace(/\D/g, '')}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mensaje */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Mensaje:
+                  </label>
+                  <textarea
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    placeholder="Escribe tu mensaje aquí..."
+                    rows={3}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Resultado */}
+                {sendResult && (
+                  <div className={`p-3 rounded-md ${
+                    sendResult.type === 'success' 
+                      ? 'bg-green-50 border border-green-200 text-green-800'
+                      : 'bg-red-50 border border-red-200 text-red-800'
+                  }`}>
+                    {sendResult.message}
+                  </div>
+                )}
+
+                {/* Botón enviar */}
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={sendingMessage || !selectedInstanceId || !messageRecipient || !messageText}
+                  className="w-full"
+                >
+                  <Send className={`h-4 w-4 mr-2 ${sendingMessage ? 'animate-pulse' : ''}`} />
+                  {sendingMessage ? 'Enviando...' : 'Enviar Mensaje'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* WhatsApp Sessions Dashboard */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">

@@ -71,6 +71,12 @@ export interface RecentActivity {
   };
 }
 
+export interface RateLimitInfo {
+  isRateLimited: boolean;
+  retryAfter: number; // seconds
+  nextRetryTime: Date | null;
+}
+
 export interface UseWhatsAppReturn {
   instances: WhatsAppInstance[];
   activeSessions: ActiveSession[];
@@ -78,19 +84,46 @@ export interface UseWhatsAppReturn {
   error: string | null;
   connectedInstances: WhatsAppInstance[];
   hasConnectedInstances: boolean;
-  recentActivity: RecentActivity;
+  recentActivity: RecentActivity | null;
+  rateLimitInfo: RateLimitInfo;
   refreshInstances: () => Promise<void>;
   getSessionInfo: (instanceId: string) => Promise<SessionInfo | null>;
   checkSessionReady: (instanceId: string) => Promise<boolean>;
 }
 
 export function useWhatsApp(): UseWhatsAppReturn {
+  const { token } = useAuth();
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [recentActivity, setRecentActivity] = useState<RecentActivity>({});
-  const { token } = useAuth();
+  const [recentActivity, setRecentActivity] = useState<RecentActivity | null>({
+    latestQr: undefined,
+    latestConnection: undefined,
+  });
+  const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo>({
+    isRateLimited: false,
+    retryAfter: 0,
+    nextRetryTime: null,
+  });
+
+  const handleRateLimit = useCallback((retryAfterSeconds: number = 60) => {
+    const nextRetryTime = new Date(Date.now() + retryAfterSeconds * 1000);
+    setRateLimitInfo({
+      isRateLimited: true,
+      retryAfter: retryAfterSeconds,
+      nextRetryTime,
+    });
+
+    // Auto-clear rate limit after the retry period
+    setTimeout(() => {
+      setRateLimitInfo({
+        isRateLimited: false,
+        retryAfter: 0,
+        nextRetryTime: null,
+      });
+    }, retryAfterSeconds * 1000);
+  }, []);
 
   const calculateRecentActivity = useCallback((instances: WhatsAppInstance[]) => {
     console.log('🔍 Calculating recent activity with instances:', instances);
@@ -159,6 +192,12 @@ export function useWhatsApp(): UseWhatsAppReturn {
       });
 
       if (!response.ok) {
+        if (response.status === 429) {
+          console.warn('⚠️ Rate limited, implementing backoff strategy');
+          const retryAfter = parseInt(response.headers.get('Retry-After') || '60');
+          handleRateLimit(retryAfter);
+          return;
+        }
         console.error('❌ API Error:', response.status, response.statusText);
         throw new Error(`Failed to fetch instances: ${response.status}`);
       }
@@ -188,7 +227,7 @@ export function useWhatsApp(): UseWhatsAppReturn {
     } finally {
       setLoading(false);
     }
-  }, [token, calculateRecentActivity]);
+  }, [token, calculateRecentActivity, handleRateLimit]);
 
   const fetchActiveSessions = useCallback(async () => {
     if (!token) return;
@@ -211,6 +250,9 @@ export function useWhatsApp(): UseWhatsAppReturn {
         const data = await response.json();
         console.log('📱 Active sessions:', data.sessions);
         setActiveSessions(data.sessions);
+      } else if (response.status === 429) {
+        console.warn('⚠️ Rate limited for active sessions, skipping this fetch cycle');
+        // No actualizar el error state para rate limiting
       } else {
         console.error('❌ Failed to fetch active sessions:', response.status, response.statusText);
       }
@@ -294,14 +336,14 @@ export function useWhatsApp(): UseWhatsAppReturn {
     return () => window.removeEventListener('focus', handleFocus);
   }, [refreshInstances]);
 
-  // Auto-refresh every 10 seconds when user is active (más frecuente para ver cambios)
+  // Auto-refresh every 60 seconds when user is active (reducir frecuencia para evitar rate limiting)
   useEffect(() => {
     const interval = setInterval(() => {
       if (!document.hidden) {
         console.log('🔄 Auto-refreshing WhatsApp instances...');
         refreshInstances();
       }
-    }, 10000); // 10 segundos en lugar de 30
+    }, 60000); // 60 segundos
 
     return () => clearInterval(interval);
   }, [refreshInstances]);
@@ -317,6 +359,7 @@ export function useWhatsApp(): UseWhatsAppReturn {
     connectedInstances,
     hasConnectedInstances,
     recentActivity,
+    rateLimitInfo,
     refreshInstances,
     getSessionInfo,
     checkSessionReady,

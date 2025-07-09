@@ -232,18 +232,47 @@ export class WhatsAppService {
     mediaPath?: string
   ) {
     try {
+      console.log(`🔍 SendMessage called with:`, {
+        sessionName,
+        to,
+        message: message.substring(0, 50) + '...',
+        type,
+      });
+
       const client = this.connections.get(sessionName);
       if (!client) {
+        console.log(`❌ No client found for session: ${sessionName}`);
+        console.log(`📊 Available sessions:`, Array.from(this.connections.keys()));
         throw new Error(
           `WhatsApp session '${sessionName}' not found or not connected`
         );
       }
 
+      // Check if client is actually connected
+      const isConnected = await client.isConnected().catch(() => false);
+      console.log(`🔗 Client connection status:`, { sessionName, isConnected });
+
+      if (!isConnected) {
+        throw new Error(`WhatsApp session '${sessionName}' is not connected`);
+      }
+
+      // Format number for WhatsApp Web
+      let formattedTo = to.replace(/\D/g, ''); // Remove non-digits
+      
+      // Add @c.us suffix if not present
+      if (!formattedTo.includes('@')) {
+        formattedTo = `${formattedTo}@c.us`;
+      }
+      
+      console.log(
+        `📤 Sending ${type} message from ${sessionName} to ${formattedTo}: "${message}"`
+      );
+
       let result;
 
       switch (type) {
         case 'text':
-          result = await client.sendText(to, message);
+          result = await client.sendText(formattedTo, message);
           break;
         case 'image':
           if (mediaPath) {
