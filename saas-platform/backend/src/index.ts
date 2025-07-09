@@ -24,7 +24,7 @@ import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 
 // Import routes
-import authRoutes from './routes/auth_test';
+import authRoutes from './routes/auth';
 import whatsappRoutes from './routes/whatsapp';
 
 // Import middleware

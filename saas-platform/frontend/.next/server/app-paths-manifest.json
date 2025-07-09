@@ -1,7 +1,8 @@
 {
+  "/api/auth/register/route": "app/api/auth/register/route.js",
+  "/api/auth/login/route": "app/api/auth/login/route.js",
   "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/whatsapp/connect/page": "app/dashboard/whatsapp/connect/page.js",
-  "/dashboard/chatbots/new/page": "app/dashboard/chatbots/new/page.js",
   "/login/page": "app/login/page.js",
-  "/register/page": "app/register/page.js"
+  "/auth/register/page": "app/auth/register/page.js",
+  "/auth/login/page": "app/auth/login/page.js"
 }
