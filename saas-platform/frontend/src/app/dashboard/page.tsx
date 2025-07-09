@@ -16,36 +16,14 @@
  */
 'use client';
 
-import React, { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/stores/auth';
+import React from 'react';
 import { DashboardComponent } from '@/components/dashboard/dashboard-component';
-import { Loader2 } from 'lucide-react';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
 export default function DashboardPage() {
-  const { isAuthenticated, loading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      router.push('/auth/login');
-    }
-  }, [isAuthenticated, loading, router]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Cargando...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return null;
-  }
-
-  return <DashboardComponent />;
+  return (
+    <ProtectedRoute>
+      <DashboardComponent />
+    </ProtectedRoute>
+  );
 }

@@ -40,11 +40,14 @@ import {
   MessageSquare,
   AlertCircle
 } from 'lucide-react';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-export default function ConnectWhatsAppPage() {
+function ConnectWhatsAppContent() {
   const router = useRouter();
+  const { getAuthHeaders } = useAuth();
   const [step, setStep] = useState<'setup' | 'qr' | 'connecting' | 'connected' | 'error'>('setup');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [sessionName, setSessionName] = useState('');
@@ -54,22 +57,16 @@ export default function ConnectWhatsAppPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('');
 
-  // API function to get auth token (assuming it's stored in localStorage)
-  const getAuthToken = () => {
-    return localStorage.getItem('authToken');
-  };
-
   // Create WhatsApp instance
   const createWhatsAppInstance = async () => {
     try {
       setIsLoading(true);
-      const token = getAuthToken();
       
       const response = await fetch(`${API_URL}/api/whatsapp/instances`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          ...getAuthHeaders(),
         },
         body: JSON.stringify({
           sessionName: sessionName.trim(),
@@ -93,13 +90,12 @@ export default function ConnectWhatsAppPage() {
   // Connect WhatsApp instance
   const connectWhatsAppInstance = async (instanceId: string) => {
     try {
-      const token = getAuthToken();
       
       const response = await fetch(`${API_URL}/api/whatsapp/instances/${instanceId}/connect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          ...getAuthHeaders(),
         },
       });
 
@@ -118,12 +114,11 @@ export default function ConnectWhatsAppPage() {
   // Poll for QR code and status
   const pollQRCodeAndStatus = async (instanceId: string) => {
     try {
-      const token = getAuthToken();
       
       const response = await fetch(`${API_URL}/api/whatsapp/instances/${instanceId}/qr`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          ...getAuthHeaders(),
         },
       });
 
@@ -441,5 +436,13 @@ export default function ConnectWhatsAppPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ConnectWhatsAppPage() {
+  return (
+    <ProtectedRoute>
+      <ConnectWhatsAppContent />
+    </ProtectedRoute>
   );
 }
