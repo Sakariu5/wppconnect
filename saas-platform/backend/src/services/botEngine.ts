@@ -46,8 +46,8 @@ export class BotEngineService {
         whatsAppService
       );
 
-      // Update analytics
-      await this.updateBotAnalytics(matchingBot.id, 'trigger');
+      // Update analytics (commented out until Prisma client is regenerated)
+      // await this.updateBotAnalytics(matchingBot.id, 'trigger');
     } catch (error) {
       console.error('Error processing message with bot engine:', error);
     }
@@ -313,10 +313,10 @@ export class BotEngineService {
       conversation.id
     );
 
-    // Update analytics
-    if (conversation.chatbotId) {
-      await this.updateBotAnalytics(conversation.chatbotId, 'handoff');
-    }
+    // Update analytics (commented out until Prisma client is regenerated)
+    // if (conversation.chatbotId) {
+    //   await this.updateBotAnalytics(conversation.chatbotId, 'handoff');
+    // }
   }
 
   private async sendBotMessage(
@@ -349,6 +349,8 @@ export class BotEngineService {
     chatbotId: string,
     type: 'trigger' | 'completion' | 'handoff'
   ) {
+    // Commented out until Prisma client is regenerated
+    /*
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -376,5 +378,7 @@ export class BotEngineService {
         handoffs: type === 'handoff' ? 1 : 0,
       },
     });
+    */
+    console.log(`Bot analytics would be updated: ${chatbotId}, type: ${type}`);
   }
 }

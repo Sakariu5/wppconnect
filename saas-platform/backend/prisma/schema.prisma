@@ -90,6 +90,7 @@ model Chatbot {
   flows             BotFlow[]
   triggers          BotTrigger[]
   conversations     Conversation[]
+  analytics         BotAnalytics[]
 
   @@map("chatbots")
 }
@@ -178,4 +179,22 @@ model Message {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@map("messages")
+}
+
+// Bot Analytics
+model BotAnalytics {
+  id          String   @id @default(cuid())
+  date        DateTime
+  triggers    Int      @default(0)
+  completions Int      @default(0)
+  handoffs    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  chatbotId String
+  chatbot   Chatbot @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+
+  @@unique([chatbotId, date])
+  @@map("bot_analytics")
 }
