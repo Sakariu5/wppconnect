@@ -3,8 +3,29 @@
  *
  * WPPConnect is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * the Free Software Foundation, either version 3 of the License,      // Format number for WhatsApp Web
+      let formattedTo = to.replace(/\D/g, ''); // Remove non-digits
+      
+      console.log(`🔧 Number formatting:`, {
+        original: to,
+        cleaned: formattedTo,
+        hasAtSymbol: to.includes('@'),
+        isValidLength: formattedTo.length >= 10 && formattedTo.length <= 15,
+      });
+      
+      // Validate number length
+      if (formattedTo.length < 10 || formattedTo.length > 15) {
+        throw new Error(`Invalid phone number length: ${formattedTo.length} digits. Expected 10-15 digits.`);
+      }
+      
+      // Add @c.us suffix if not present
+      if (!formattedTo.includes('@')) {
+        formattedTo = `${formattedTo}@c.us`;
+      }
+      
+      console.log(
+        `📤 Sending ${type} message from ${sessionName} to ${formattedTo}: "${message}"`
+      );ption) any later version.
  *
  * WPPConnect is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -235,6 +256,9 @@ export class WhatsAppService {
       console.log(`🔍 SendMessage called with:`, {
         sessionName,
         to,
+        toType: typeof to,
+        toLength: to?.length,
+        isEmpty: !to || to.trim() === '',
         message: message.substring(0, 50) + '...',
         type,
       });
@@ -259,6 +283,13 @@ export class WhatsAppService {
       // Format number for WhatsApp Web
       let formattedTo = to.replace(/\D/g, ''); // Remove non-digits
       
+      console.log(`🔧 Number formatting:`, {
+        original: to,
+        cleaned: formattedTo,
+        hasAtSymbol: to.includes('@'),
+        isValidLength: formattedTo.length >= 10 && formattedTo.length <= 15
+      });
+      
       // Add @c.us suffix if not present
       if (!formattedTo.includes('@')) {
         formattedTo = `${formattedTo}@c.us`;
@@ -276,14 +307,14 @@ export class WhatsAppService {
           break;
         case 'image':
           if (mediaPath) {
-            result = await client.sendImage(to, mediaPath, 'image', message);
+            result = await client.sendImage(formattedTo, mediaPath, 'image', message);
           } else {
             throw new Error('Media path is required for image messages');
           }
           break;
         case 'document':
           if (mediaPath) {
-            result = await client.sendFile(to, mediaPath, 'document', message);
+            result = await client.sendFile(formattedTo, mediaPath, 'document', message);
           } else {
             throw new Error('Media path is required for document messages');
           }
@@ -291,7 +322,7 @@ export class WhatsAppService {
         case 'video':
           if (mediaPath) {
             result = await client.sendVideoAsGif(
-              to,
+              formattedTo,
               mediaPath,
               'video',
               message
@@ -302,23 +333,23 @@ export class WhatsAppService {
           break;
         case 'audio':
           if (mediaPath) {
-            result = await client.sendFile(to, mediaPath, 'audio', message);
+            result = await client.sendFile(formattedTo, mediaPath, 'audio', message);
           } else {
             throw new Error('Media path is required for audio messages');
           }
           break;
         case 'sticker':
           if (mediaPath) {
-            result = await client.sendImageAsSticker(to, mediaPath);
+            result = await client.sendImageAsSticker(formattedTo, mediaPath);
           } else {
             throw new Error('Media path is required for sticker messages');
           }
           break;
         default:
-          result = await client.sendText(to, message);
+          result = await client.sendText(formattedTo, message);
       }
 
-      console.log(`Message sent successfully from ${sessionName} to ${to}`);
+      console.log(`Message sent successfully from ${sessionName} to ${formattedTo}`);
       return result;
     } catch (error) {
       console.error('Error sending message:', error);

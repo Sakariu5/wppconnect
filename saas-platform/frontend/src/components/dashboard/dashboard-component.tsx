@@ -91,6 +91,44 @@ export function DashboardComponent() {
     }
   };
 
+  // Función mejorada para limpiar y validar números
+  const cleanAndValidateNumber = (input: string): { valid: boolean; cleaned: string; error?: string } => {
+    console.log('🧹 Cleaning number input:', { original: input, length: input.length });
+    
+    // Remover todos los caracteres que no sean números
+    const cleaned = input.replace(/\D/g, '');
+    console.log('🧹 After cleaning:', { cleaned, length: cleaned.length });
+    
+    if (!cleaned) {
+      return { valid: false, cleaned: '', error: 'Número vacío después de limpiar' };
+    }
+    
+    if (cleaned.length < 10) {
+      return { valid: false, cleaned, error: 'Número muy corto (mínimo 10 dígitos)' };
+    }
+    
+    if (cleaned.length > 15) {
+      return { valid: false, cleaned, error: 'Número muy largo (máximo 15 dígitos)' };
+    }
+    
+    // Validaciones específicas por país
+    // Para México: +52 1 55 4968 1111 = 5215549681111 (13 dígitos)
+    if (cleaned.startsWith('52') && cleaned.length === 13) {
+      return { valid: true, cleaned };
+    }
+    
+    // Para México sin el "1" de área metropolitana: +52 55 4968 1111 = 52554968111 (11 dígitos)
+    if (cleaned.startsWith('52') && cleaned.length === 12) {
+      return { valid: true, cleaned };
+    }
+    
+    if (cleaned.startsWith('1') && cleaned.length === 11) {
+      return { valid: false, cleaned, error: 'Para EE.UU./Canadá: 1 + 10 dígitos (total 11)' };
+    }
+    
+    return { valid: true, cleaned };
+  };
+
   const handleSendMessage = async () => {
     if (!selectedInstanceId || !messageRecipient || !messageText) {
       setSendResult({ type: 'error', message: 'Por favor completa todos los campos' });
@@ -109,31 +147,17 @@ export function DashboardComponent() {
       }
     }
 
-    // Formatear el número: remover todos los caracteres que no sean números
-    const cleanNumber = messageRecipient.replace(/\D/g, '');
-    
-    // Validación más flexible para diferentes países
-    if (cleanNumber.length < 10 || cleanNumber.length > 15) {
-      setSendResult({ 
-        type: 'error', 
-        message: 'Formato incorrecto. Usa: código país + número (10-15 dígitos total)' 
-      });
-      return;
-    }
+    const { valid, cleaned, error } = cleanAndValidateNumber(messageRecipient);
 
-    // Validación específica para México (más común)
-    if (cleanNumber.startsWith('52') && cleanNumber.length !== 12) {
-      setSendResult({ 
-        type: 'error', 
-        message: 'Para México usa: 52 + 10 dígitos (ej: 5219876543210)' 
-      });
+    if (!valid) {
+      setSendResult({ type: 'error', message: error || 'Número inválido' });
       return;
     }
 
     console.log('📤 Sending message:', {
       instanceId: selectedInstanceId,
       originalRecipient: messageRecipient,
-      cleanRecipient: cleanNumber,
+      cleanRecipient: cleaned,
       message: messageText
     });
 
@@ -152,7 +176,7 @@ export function DashboardComponent() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          to: cleanNumber, // Usar el número limpio
+          to: cleaned, // Usar el número limpio
           message: messageText,
           type: 'text'
         }),
@@ -533,8 +557,19 @@ export function DashboardComponent() {
                   <input
                     type="text"
                     value={messageRecipient}
-                    onChange={(e) => setMessageRecipient(e.target.value)}
-                    placeholder="Ej: 5219876543210, 12345678901, etc."
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      console.log('📝 Input changed:', { 
+                        value, 
+                        length: value.length,
+                        hasSpaces: value.includes(' '),
+                        hasDashes: value.includes('-'),
+                        hasParens: value.includes('(') || value.includes(')'),
+                        isPasted: value.length > messageRecipient.length + 5 // Detectar paste
+                      });
+                      setMessageRecipient(value);
+                    }}
+                    placeholder="Ej: 5215549681111, 5255496811111, 12345678901, etc."
                     className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                   <div className="mt-1 text-xs text-gray-500">
@@ -542,7 +577,7 @@ export function DashboardComponent() {
                       <strong>Formatos válidos:</strong>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>🇲🇽 México: 52 + 10 dígitos</div>
+                      <div>🇲🇽 México: 52 + 10/11 dígitos</div>
                       <div>🇺🇸 EE.UU.: 1 + 10 dígitos</div>
                       <div>🇪🇸 España: 34 + 9 dígitos</div>
                       <div>🌍 Otros: Código país + número</div>
@@ -554,6 +589,7 @@ export function DashboardComponent() {
                           if (!clean) return '⚪ Ingresa un número';
                           if (clean.length < 10) return '🔴 Muy corto (mínimo 10 dígitos)';
                           if (clean.length > 15) return '🔴 Muy largo (máximo 15 dígitos)';
+                          if (clean.startsWith('52') && clean.length === 13) return '🟢 México válido (con área metropolitana)';
                           if (clean.startsWith('52') && clean.length === 12) return '🟢 México válido';
                           if (clean.startsWith('1') && clean.length === 11) return '🟢 EE.UU./Canadá válido';
                           if (clean.startsWith('34') && clean.length === 11) return '🟢 España válido';

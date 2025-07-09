@@ -178,6 +178,8 @@ router.post('/instances/:id/send-message', async (req: TenantRequest, res) => {
     console.log(`📧 Send message request:`, {
       instanceId: id,
       to,
+      toType: typeof to,
+      toLength: to?.length,
       message: message?.substring(0, 50) + '...',
       type,
       tenantId: req.tenant?.id
