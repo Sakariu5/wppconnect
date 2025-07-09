@@ -16,9 +16,10 @@
  */
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -31,20 +32,38 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, MessageSquare } from 'lucide-react';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { useAuth } from '@/contexts/AuthContext';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login, isAuthenticated, isLoading } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     subdomain: '',
   });
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, isLoading, router]);
+
+  // Show loading if checking auth or already authenticated
+  if (isLoading || isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">
+            {isLoading ? 'Verificando autenticación...' : 'Redirigiendo...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const handleChange = (e: any) => {
     setFormData({
@@ -56,34 +75,17 @@ export default function LoginPage() {
   const handleSubmit = async (e: any) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
+    setIsSubmitting(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Error al iniciar sesión');
-      }
-
-      // Store auth data
-      localStorage.setItem('authToken', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      localStorage.setItem('tenant', JSON.stringify(data.tenant));
-
+      await login(formData.email, formData.password, formData.subdomain);
+      
       // Redirect to dashboard
       router.push('/dashboard');
     } catch (error: any) {
       setError(error.message || 'Error al iniciar sesión');
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -162,8 +164,8 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? (
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Iniciando sesión...
@@ -179,7 +181,7 @@ export default function LoginPage() {
               variant="outline"
               onClick={handleDemoLogin}
               className="w-full mb-4"
-              disabled={isLoading}
+              disabled={isSubmitting}
             >
               Probar con Cuenta Demo
             </Button>

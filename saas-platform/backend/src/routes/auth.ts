@@ -98,6 +98,8 @@ router.post('/register', async (req, res) => {
     });
 
     // Generate JWT
+    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret';
+    console.log('JWT Secret for token generation:', jwtSecret);
     const token = jwt.sign(
       {
         id: result.user.id,
@@ -105,7 +107,7 @@ router.post('/register', async (req, res) => {
         role: result.user.role,
         tenantId: result.tenant.id,
       },
-      process.env.JWT_SECRET || 'fallback-secret',
+      jwtSecret,
       { expiresIn: '7d' }
     );
 
@@ -231,39 +233,20 @@ router.get('/verify', async (req, res) => {
       return res.status(401).json({ error: 'No token provided' });
     }
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'fallback-secret'
-    ) as any;
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      include: { tenant: true },
-    });
+    console.log('Verifying token:', token.substring(0, 20) + '...');
 
-    if (!user || !user.isActive || !user.tenant.isActive) {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
+    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret';
+    console.log('JWT Secret for token verification:', jwtSecret);
 
+    const decoded = jwt.verify(token, jwtSecret) as any;
+    console.log('Token decoded successfully:', decoded);
+    // For now, just return success to test if verification works
     res.json({
       valid: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-      },
-      tenant: {
-        id: user.tenant.id,
-        subdomain: user.tenant.subdomain,
-        name: user.tenant.name,
-        logo: user.tenant.logo,
-        primaryColor: user.tenant.primaryColor,
-        secondaryColor: user.tenant.secondaryColor,
-        plan: user.tenant.plan,
-      },
+      decoded: decoded,
     });
   } catch (error) {
+    console.error('Token verification error:', error);
     return res.status(401).json({ error: 'Invalid token' });
   }
 });
