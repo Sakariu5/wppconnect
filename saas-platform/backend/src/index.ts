@@ -25,22 +25,15 @@ import rateLimit from 'express-rate-limit';
 
 // Import routes
 import authRoutes from './routes/auth_test';
-// import tenantRoutes from './routes/tenant';
-// import userRoutes from './routes/user';
-// import whatsappRoutes from './routes/whatsapp';
-// import chatbotRoutes from './routes/chatbot';
-// import conversationRoutes from './routes/conversation';
-// import analyticsRoutes from './routes/analytics';
-// import webhookRoutes from './routes/webhook';
+import whatsappRoutes from './routes/whatsapp';
 
 // Import middleware
-// import { errorHandler } from './middleware/errorHandler';
-// import { authMiddleware } from './middleware/auth';
-// import { tenantMiddleware } from './middleware/tenant';
+import { authMiddleware } from './middleware/auth';
+import { tenantMiddleware } from './middleware/tenant';
 
 // Import services
-// import { WebSocketService } from './services/websocket';
-// import { WhatsAppService } from './services/whatsapp';
+import { WebSocketService } from './services/websocket';
+import { WhatsAppService } from './services/whatsappSimple';
 
 // Load environment variables
 dotenv.config();
@@ -87,10 +80,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/', limiter);
 
 // Initialize WebSocket service
-// const webSocketService = new WebSocketService(io);
+const webSocketService = new WebSocketService(io);
 
 // Initialize WhatsApp service
-// const whatsAppService = new WhatsAppService();
+const whatsAppService = new WhatsAppService();
+whatsAppService.setWebSocketService(webSocketService);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -107,17 +101,7 @@ app.get('/health', (req, res) => {
 
 // API routes with authentication and tenant middleware
 app.use('/api/auth', authRoutes);
-// app.use('/api/tenant', authMiddleware, tenantMiddleware, tenantRoutes);
-// app.use('/api/users', authMiddleware, tenantMiddleware, userRoutes);
-// app.use('/api/whatsapp', authMiddleware, tenantMiddleware, whatsappRoutes);
-// app.use('/api/chatbots', authMiddleware, tenantMiddleware, chatbotRoutes);
-// app.use(
-//   '/api/conversations',
-//   authMiddleware,
-//   tenantMiddleware,
-//   conversationRoutes
-// );
-// app.use('/api/analytics', authMiddleware, tenantMiddleware, analyticsRoutes);
+app.use('/api/whatsapp', authMiddleware, tenantMiddleware, whatsappRoutes);
 
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));

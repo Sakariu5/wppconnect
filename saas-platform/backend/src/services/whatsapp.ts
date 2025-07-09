@@ -14,8 +14,21 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 import { create, Whatsapp } from '@wppconnect-team/wppconnect';
-import { PrismaClient, MessageType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+
+export enum MessageType {
+  TEXT = 'TEXT',
+  IMAGE = 'IMAGE',
+  DOCUMENT = 'DOCUMENT',
+  AUDIO = 'AUDIO',
+  VIDEO = 'VIDEO',
+  STICKER = 'STICKER',
+  LOCATION = 'LOCATION',
+  CONTACT = 'CONTACT',
+}
+
 import { WebSocketService } from './websocket';
 import { BotEngineService } from './botEngine';
 
@@ -75,10 +88,10 @@ export class WhatsAppService {
 
       // Update database
       await prisma.whatsappInstance.update({
-        where: { sessionName },
+        where: { name: sessionName },
         data: {
           status: 'CONNECTING',
-          lastSeen: new Date(),
+          updatedAt: new Date(),
         },
       });
 
@@ -86,7 +99,12 @@ export class WhatsAppService {
     } catch (error) {
       console.error('Error creating WhatsApp session:', error);
       await prisma.whatsappInstance.update({
-        where: { sessionName },
+        where: {
+          name_tenantId: {
+            name: sessionName,
+            tenantId: tenantId,
+          }
+        },
         data: { status: 'ERROR' },
       });
 

@@ -16,8 +16,9 @@
  */
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -36,16 +37,126 @@ import {
   Loader2, 
   CheckCircle,
   Wifi,
-  MessageSquare
+  MessageSquare,
+  AlertCircle
 } from 'lucide-react';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export default function ConnectWhatsAppPage() {
   const router = useRouter();
-  const [step, setStep] = useState<'setup' | 'qr' | 'connecting' | 'connected'>('setup');
+  const [step, setStep] = useState<'setup' | 'qr' | 'connecting' | 'connected' | 'error'>('setup');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [sessionName, setSessionName] = useState('');
   const [error, setError] = useState('');
   const [qrCode, setQrCode] = useState('');
+  const [instanceId, setInstanceId] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('');
+
+  // API function to get auth token (assuming it's stored in localStorage)
+  const getAuthToken = () => {
+    return localStorage.getItem('authToken');
+  };
+
+  // Create WhatsApp instance
+  const createWhatsAppInstance = async () => {
+    try {
+      setIsLoading(true);
+      const token = getAuthToken();
+      
+      const response = await fetch(`${API_URL}/api/whatsapp/instances`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          sessionName: sessionName.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error creating WhatsApp instance');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error creating instance:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Connect WhatsApp instance
+  const connectWhatsAppInstance = async (instanceId: string) => {
+    try {
+      const token = getAuthToken();
+      
+      const response = await fetch(`${API_URL}/api/whatsapp/instances/${instanceId}/connect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error connecting WhatsApp instance');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error connecting instance:', error);
+      throw error;
+    }
+  };
+
+  // Poll for QR code and status
+  const pollQRCodeAndStatus = async (instanceId: string) => {
+    try {
+      const token = getAuthToken();
+      
+      const response = await fetch(`${API_URL}/api/whatsapp/instances/${instanceId}/qr`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Error fetching QR code');
+      }
+
+      const data = await response.json();
+      
+      if (data.qrCode && data.qrCode !== qrCode) {
+        setQrCode(data.qrCode);
+      }
+
+      setConnectionStatus(data.status);
+
+      // Handle status changes
+      if (data.status === 'CONNECTED') {
+        setStep('connected');
+        return false; // Stop polling
+      } else if (data.status === 'ERROR') {
+        setError('Error de conexión. Por favor intenta nuevamente.');
+        setStep('error');
+        return false; // Stop polling
+      } else if (data.status === 'QR_CODE' && !qrCode) {
+        setStep('qr');
+      }
+
+      return true; // Continue polling
+    } catch (error) {
+      console.error('Error polling QR code:', error);
+      return true; // Continue polling even on error
+    }
+  };
 
   const handleSubmit = async (e: any) => {
     e.preventDefault();
@@ -56,27 +167,53 @@ export default function ConnectWhatsAppPage() {
       return;
     }
 
-    // Simular proceso de conexión
-    setStep('qr');
-    
-    // Simular generación de QR (en producción se generaría un QR real)
-    setTimeout(() => {
-      setQrCode('generated'); // Solo indicamos que el QR fue "generado"
-    }, 1000);
+    try {
+      // Create WhatsApp instance
+      const instance = await createWhatsAppInstance();
+      setInstanceId(instance.id);
+
+      // Connect the instance
+      await connectWhatsAppInstance(instance.id);
+      
+      setStep('connecting');
+
+      // Start polling for QR code and status
+      const pollInterval = setInterval(async () => {
+        const shouldContinue = await pollQRCodeAndStatus(instance.id);
+        if (!shouldContinue) {
+          clearInterval(pollInterval);
+        }
+      }, 2000);
+
+      // Clean up interval after 5 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (step !== 'connected') {
+          setError('Tiempo de conexión agotado. Por favor intenta nuevamente.');
+          setStep('error');
+        }
+      }, 300000); // 5 minutes
+
+    } catch (error: any) {
+      setError(error.message || 'Error al crear la conexión');
+      setStep('error');
+    }
   };
 
-  const simulateConnection = () => {
-    setStep('connecting');
-    setTimeout(() => {
-      setStep('connected');
-    }, 3000);
+  // Start connection process (for manual retry)
+  const retryConnection = () => {
+    setError('');
+    setQrCode('');
+    setStep('setup');
   };
 
   const goBack = () => {
-    if (step === 'setup') {
+    if (step === 'setup' || step === 'error') {
       router.push('/dashboard');
     } else {
       setStep('setup');
+      setError('');
+      setQrCode('');
     }
   };
 
@@ -168,18 +305,21 @@ export default function ConnectWhatsAppPage() {
               <div className="mb-6">
                 {qrCode ? (
                   <div className="inline-block p-4 bg-white rounded-lg border">
-                    {/* Usando un placeholder para el QR - en producción se generaría un QR real */}
-                    <div className="w-48 h-48 mx-auto bg-gray-100 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300">
-                      <div className="text-center">
-                        <QrCode className="h-16 w-16 text-gray-400 mx-auto mb-2" />
-                        <p className="text-sm text-gray-500 font-medium">Código QR</p>
-                        <p className="text-xs text-gray-400">WhatsApp Connection</p>
-                      </div>
-                    </div>
+                    <Image
+                      src={qrCode}
+                      alt="WhatsApp QR Code"
+                      width={256}
+                      height={256}
+                      className="mx-auto"
+                      unoptimized
+                    />
                   </div>
                 ) : (
-                  <div className="w-48 h-48 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                  <div className="w-64 h-64 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
+                    <div className="text-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">Generando código QR...</p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -194,9 +334,13 @@ export default function ConnectWhatsAppPage() {
                 </ol>
               </div>
 
-              <Button onClick={simulateConnection} className="w-full max-w-sm">
-                Simular Conexión (Demo)
-              </Button>
+              <Alert className="max-w-md mx-auto">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  El código QR expira en 60 segundos. Si no logras escanearlo a tiempo, 
+                  se generará uno nuevo automáticamente.
+                </AlertDescription>
+              </Alert>
             </CardContent>
           </Card>
         )}
@@ -209,14 +353,47 @@ export default function ConnectWhatsAppPage() {
                 Conectando...
               </CardTitle>
               <CardDescription>
-                Estableciendo conexión con WhatsApp
+                Esperando a que escanees el código QR
               </CardDescription>
             </CardHeader>
             <CardContent className="text-center py-12">
               <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
-              <p className="text-gray-600">
-                Por favor espera mientras establecemos la conexión...
+              <p className="text-gray-600 mb-2">
+                Esperando conexión de WhatsApp...
               </p>
+              <p className="text-sm text-gray-500">
+                Estado: {connectionStatus || 'Iniciando conexión...'}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {step === 'error' && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center text-red-600">
+                <AlertCircle className="h-5 w-5 mr-2" />
+                Error de Conexión
+              </CardTitle>
+              <CardDescription>
+                No se pudo establecer la conexión con WhatsApp
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-center py-8">
+              {error && (
+                <Alert variant="destructive" className="mb-6">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button onClick={retryConnection}>
+                  Intentar Nuevamente
+                </Button>
+                <Button variant="outline" onClick={() => router.push('/dashboard')}>
+                  Volver al Dashboard
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}

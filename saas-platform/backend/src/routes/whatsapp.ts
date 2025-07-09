@@ -17,7 +17,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { TenantRequest } from '../middleware/tenant';
-import { WhatsAppService } from '../services/whatsapp';
+import { WhatsAppService } from '../services/whatsappSimple';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -47,8 +47,11 @@ router.post('/instances', async (req: TenantRequest, res) => {
     }
 
     // Check if session already exists
-    const existingInstance = await prisma.whatsappInstance.findUnique({
-      where: { sessionName },
+    const existingInstance = await prisma.whatsappInstance.findFirst({
+      where: {
+        name: sessionName,
+        tenantId: req.tenant!.id,
+      },
     });
 
     if (existingInstance) {
@@ -58,8 +61,7 @@ router.post('/instances', async (req: TenantRequest, res) => {
     // Create instance in database
     const instance = await prisma.whatsappInstance.create({
       data: {
-        sessionName,
-        userId: req.user!.id,
+        name: sessionName,
         tenantId: req.tenant!.id,
         status: 'DISCONNECTED',
       },
@@ -89,14 +91,14 @@ router.post('/instances/:id/connect', async (req: TenantRequest, res) => {
 
     // Start WhatsApp session
     await whatsAppService.createSession(
-      instance.sessionName,
+      instance.name,
       req.tenant!.id,
       req.user!.id
     );
 
     res.json({
       message: 'Connection started',
-      sessionName: instance.sessionName,
+      sessionName: instance.name,
     });
   } catch (error) {
     console.error('Connection error:', error);
@@ -121,7 +123,7 @@ router.post('/instances/:id/disconnect', async (req: TenantRequest, res) => {
     }
 
     // Destroy WhatsApp session
-    await whatsAppService.destroySession(instance.sessionName);
+    await whatsAppService.destroySession(instance.name);
 
     res.json({ message: 'Disconnected successfully' });
   } catch (error) {
@@ -185,7 +187,7 @@ router.post('/instances/:id/send-message', async (req: TenantRequest, res) => {
 
     // Send message
     const result = await whatsAppService.sendMessage(
-      instance.sessionName,
+      instance.name,
       to,
       message,
       type
@@ -219,7 +221,7 @@ router.delete('/instances/:id', async (req: TenantRequest, res) => {
 
     // Disconnect if connected
     if (instance.status === 'CONNECTED') {
-      await whatsAppService.destroySession(instance.sessionName);
+      await whatsAppService.destroySession(instance.name);
     }
 
     // Delete from database
