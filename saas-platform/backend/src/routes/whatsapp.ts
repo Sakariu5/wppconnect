@@ -77,6 +77,7 @@ router.post('/instances', async (req: TenantRequest, res) => {
 router.post('/instances/:id/connect', async (req: TenantRequest, res) => {
   try {
     const { id } = req.params;
+    console.log(`🔌 Attempting to connect WhatsApp instance: ${id}`);
 
     const instance = await prisma.whatsappInstance.findFirst({
       where: {
@@ -86,9 +87,12 @@ router.post('/instances/:id/connect', async (req: TenantRequest, res) => {
     });
 
     if (!instance) {
+      console.log(`❌ WhatsApp instance not found: ${id}`);
       return res.status(404).json({ error: 'WhatsApp instance not found' });
     }
 
+    console.log(`✅ Found instance: ${instance.name}, starting session...`);
+    
     // Start WhatsApp session
     await whatsAppService.createSession(
       instance.name,
@@ -96,6 +100,8 @@ router.post('/instances/:id/connect', async (req: TenantRequest, res) => {
       req.user!.id
     );
 
+    console.log(`🚀 Session creation initiated for: ${instance.name}`);
+    
     res.json({
       message: 'Connection started',
       sessionName: instance.name,
@@ -135,6 +141,7 @@ router.post('/instances/:id/disconnect', async (req: TenantRequest, res) => {
 router.get('/instances/:id/qr', async (req: TenantRequest, res) => {
   try {
     const { id } = req.params;
+    console.log(`📱 Polling QR code for instance: ${id}`);
 
     const instance = await prisma.whatsappInstance.findFirst({
       where: {
@@ -144,14 +151,20 @@ router.get('/instances/:id/qr', async (req: TenantRequest, res) => {
     });
 
     if (!instance) {
+      console.log(`❌ Instance not found for QR polling: ${id}`);
       return res.status(404).json({ error: 'WhatsApp instance not found' });
     }
 
+    console.log(
+      `📊 Instance status: ${instance.status}, QR exists: ${!!instance.qrCode}`
+    );
+    
     res.json({
       qrCode: instance.qrCode,
       status: instance.status,
     });
   } catch (error) {
+    console.error('Error getting QR code:', error);
     res.status(500).json({ error: 'Failed to get QR code' });
   }
 });

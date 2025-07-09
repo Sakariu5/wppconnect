@@ -14,17 +14,32 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { create, Whatsapp } from '@wppconnect-team/wppconnect';
+import { create, Whatsapp, defaultLogger } from '@wppconnect-team/wppconnect';
 import { PrismaClient } from '@prisma/client';
 import { WebSocketService } from './websocket';
+import * as path from 'path';
+import * as fs from 'fs';
 
 const prisma = new PrismaClient();
+
+// Configure logger
+defaultLogger.level = 'info';
+// Uncomment to disable console logging in production
+// defaultLogger.transports.forEach((t) => (t.silent = true));
 
 export class WhatsAppService {
   private connections: Map<string, Whatsapp> = new Map();
   private webSocketService?: WebSocketService;
+  private tokensDir: string;
+  private reconnectIntervals: Map<string, NodeJS.Timeout> = new Map();
 
-  constructor() {}
+  constructor() {
+    // Create tokens directory if it doesn't exist
+    this.tokensDir = path.join(process.cwd(), 'tokens');
+    if (!fs.existsSync(this.tokensDir)) {
+      fs.mkdirSync(this.tokensDir, { recursive: true });
+    }
+  }
 
   setWebSocketService(webSocketService: WebSocketService) {
     this.webSocketService = webSocketService;
@@ -34,21 +49,54 @@ export class WhatsAppService {
     try {
       console.log(`Creating WhatsApp session: ${sessionName}`);
 
+      // Ensure session directory exists for multidevice support
+      const sessionDir = path.join(this.tokensDir, sessionName);
+      if (!fs.existsSync(sessionDir)) {
+        fs.mkdirSync(sessionDir, { recursive: true });
+      }
+
       const client = await create({
         session: sessionName,
-        catchQR: (base64Qr, asciiQR, attempts, urlCode) => {
-          console.log('QR Code generated for session:', sessionName);
+        logger: defaultLogger,
+        catchQR: (base64Qr, asciiQr, attempts, urlCode) => {
+          console.log(
+            `QR Code generated for session: ${sessionName} (attempt ${attempts})`
+          );
+          console.log('URL Code:', urlCode);
           this.handleQRCode(sessionName, base64Qr, tenantId);
         },
         statusFind: (statusSession, session) => {
           console.log('Status session:', statusSession, session);
           this.handleStatusChange(sessionName, statusSession, tenantId);
         },
+        onLoadingScreen: (percent, message) => {
+          console.log(`Loading ${sessionName}: ${percent}% - ${message}`);
+        },
         headless: true,
         devtools: false,
         useChrome: true,
         debug: false,
-        logQR: false,
+        logQR: false, // We handle QR via catchQR callback
+        autoClose: 300000, // 5 minutes timeout for QR scanning (increased from 60s)
+        folderNameToken: this.tokensDir,
+        updatesLog: true,
+        disableWelcome: true,
+        // Multidevice support configuration
+        puppeteerOptions: {
+          userDataDir: sessionDir,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+          ],
+        },
         browserArgs: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -58,15 +106,34 @@ export class WhatsAppService {
           '--no-zygote',
           '--single-process',
           '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
         ],
       });
 
       // Store connection
       this.connections.set(sessionName, client);
 
-      // Set up message listener
+      // Start phone watchdog for connection verification
+      this.startPhoneWatchdog(client, sessionName);
+
+      // Set up comprehensive message listener
       client.onMessage(async (message) => {
-        console.log('Received message:', message);
+        await this.handleIncomingMessage(message, sessionName, tenantId);
+      });
+
+      // Handle state changes
+      client.onStateChange((state) => {
+        console.log(`State change for ${sessionName}:`, state);
+        if (state === 'CONFLICT' || state === 'UNLAUNCHED') {
+          this.handleDisconnection(sessionName, tenantId);
+        }
+      });
+
+      // Handle disconnections
+      client.onIncomingCall(async (call) => {
+        console.log('Incoming call:', call);
+        // You can implement call handling logic here
       });
 
       // Update database
@@ -112,8 +179,22 @@ export class WhatsAppService {
     try {
       const client = this.connections.get(sessionName);
       if (client) {
+        try {
+          // Stop phone watchdog if running
+          // client.stopPhoneWatchdog();
+        } catch (error) {
+          console.error('Error stopping phone watchdog:', error);
+        }
+
         await client.close();
         this.connections.delete(sessionName);
+      }
+
+      // Clear any scheduled reconnection
+      const reconnectInterval = this.reconnectIntervals.get(sessionName);
+      if (reconnectInterval) {
+        clearTimeout(reconnectInterval);
+        this.reconnectIntervals.delete(sessionName);
       }
 
       const instance = await prisma.whatsappInstance.findFirst({
@@ -123,7 +204,11 @@ export class WhatsAppService {
       if (instance) {
         await prisma.whatsappInstance.update({
           where: { id: instance.id },
-          data: { status: 'DISCONNECTED' },
+          data: {
+            status: 'DISCONNECTED',
+            qrCode: null,
+            updatedAt: new Date(),
+          },
         });
       }
 
@@ -137,13 +222,21 @@ export class WhatsAppService {
     sessionName: string,
     to: string,
     message: string,
-    type: 'text' | 'image' | 'document' = 'text',
+    type:
+      | 'text'
+      | 'image'
+      | 'document'
+      | 'video'
+      | 'audio'
+      | 'sticker' = 'text',
     mediaPath?: string
   ) {
     try {
       const client = this.connections.get(sessionName);
       if (!client) {
-        throw new Error('WhatsApp session not found');
+        throw new Error(
+          `WhatsApp session '${sessionName}' not found or not connected`
+        );
       }
 
       let result;
@@ -155,17 +248,48 @@ export class WhatsAppService {
         case 'image':
           if (mediaPath) {
             result = await client.sendImage(to, mediaPath, 'image', message);
+          } else {
+            throw new Error('Media path is required for image messages');
           }
           break;
         case 'document':
           if (mediaPath) {
             result = await client.sendFile(to, mediaPath, 'document', message);
+          } else {
+            throw new Error('Media path is required for document messages');
+          }
+          break;
+        case 'video':
+          if (mediaPath) {
+            result = await client.sendVideoAsGif(
+              to,
+              mediaPath,
+              'video',
+              message
+            );
+          } else {
+            throw new Error('Media path is required for video messages');
+          }
+          break;
+        case 'audio':
+          if (mediaPath) {
+            result = await client.sendFile(to, mediaPath, 'audio', message);
+          } else {
+            throw new Error('Media path is required for audio messages');
+          }
+          break;
+        case 'sticker':
+          if (mediaPath) {
+            result = await client.sendImageAsSticker(to, mediaPath);
+          } else {
+            throw new Error('Media path is required for sticker messages');
           }
           break;
         default:
           result = await client.sendText(to, message);
       }
 
+      console.log(`Message sent successfully from ${sessionName} to ${to}`);
       return result;
     } catch (error) {
       console.error('Error sending message:', error);
@@ -179,6 +303,9 @@ export class WhatsAppService {
     tenantId: string
   ) {
     try {
+      console.log(`📱 Handling QR code for session: ${sessionName}`);
+      console.log(`QR Code length: ${qrCode.length}`);
+      
       const instance = await prisma.whatsappInstance.findFirst({
         where: {
           name: sessionName,
@@ -187,6 +314,10 @@ export class WhatsAppService {
       });
 
       if (instance) {
+        console.log(
+          `✅ Found instance ${instance.id}, updating with QR code...`
+        );
+        
         await prisma.whatsappInstance.update({
           where: { id: instance.id },
           data: {
@@ -194,6 +325,10 @@ export class WhatsAppService {
             status: 'QR_CODE',
           },
         });
+
+        console.log(
+          `💾 QR code saved to database for instance: ${instance.id}`
+        );
 
         // Emit QR code via WebSocket
         if (this.webSocketService) {
@@ -203,7 +338,12 @@ export class WhatsAppService {
             'QR_CODE',
             qrCode
           );
+          console.log(`📡 QR code emitted via WebSocket`);
+        } else {
+          console.log(`⚠️  WebSocket service not available`);
         }
+      } else {
+        console.log(`❌ Instance not found for session: ${sessionName}`);
       }
     } catch (error) {
       console.error('Error handling QR code:', error);
@@ -224,7 +364,15 @@ export class WhatsAppService {
           dbStatus = 'CONNECTED';
           break;
         case 'notLogged':
-          dbStatus = 'DISCONNECTED';
+          dbStatus = 'QR_CODE'; // Change to QR_CODE instead of DISCONNECTED when waiting for QR
+          break;
+        case 'autocloseCalled':
+          console.log(
+            `⚠️  Auto close called for session ${sessionName} - QR code timeout`
+          );
+          dbStatus = 'ERROR';
+          // Trigger automatic restart
+          this.handleAutoCloseTimeout(sessionName, tenantId);
           break;
         case 'browserClose':
         case 'serverClose':
@@ -232,9 +380,16 @@ export class WhatsAppService {
           break;
         case 'qrReadError':
         case 'qrReadFail':
-          dbStatus = 'QR_CODE';
+          dbStatus = 'ERROR';
+          break;
+        case 'qrReadSuccess':
+          dbStatus = 'CONNECTING';
+          break;
+        case 'desconnectedMobile':
+          dbStatus = 'DISCONNECTED';
           break;
         default:
+          console.log(`ℹ️  Unknown status for ${sessionName}: ${status}`);
           dbStatus = 'CONNECTING';
       }
 
@@ -266,6 +421,275 @@ export class WhatsAppService {
       }
     } catch (error) {
       console.error('Error handling status change:', error);
+    }
+  }
+
+  /**
+   * Start phone watchdog to monitor connection
+   */
+  private startPhoneWatchdog(client: Whatsapp, sessionName: string) {
+    try {
+      // Start phone watchdog with 30 second interval
+      client.startPhoneWatchdog(30000);
+      console.log(`Phone watchdog started for session: ${sessionName}`);
+    } catch (error) {
+      console.error(`Error starting phone watchdog for ${sessionName}:`, error);
+    }
+  }
+
+  /**
+   * Handle incoming messages
+   */
+  private async handleIncomingMessage(
+    message: any,
+    sessionName: string,
+    tenantId: string
+  ) {
+    try {
+      console.log('Received message:', {
+        from: message.from,
+        type: message.type,
+        body: message.body,
+        session: sessionName,
+      });
+
+      // Store message in database
+      const instance = await prisma.whatsappInstance.findFirst({
+        where: { name: sessionName, tenantId },
+      });
+
+      if (instance) {
+        // You can add logic here to store conversations and process bot responses
+        // For now, just log the message
+        console.log(`Message processed for session ${sessionName}`);
+        // Emit message via WebSocket
+        if (this.webSocketService) {
+          this.webSocketService.emitToTenant(tenantId, 'new-whatsapp-message', {
+            instanceId: sessionName,
+            message: {
+              id: message.id,
+              from: message.from,
+              to: message.to,
+              body: message.body,
+              type: message.type,
+              timestamp: message.timestamp || new Date(),
+            },
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error handling incoming message:', error);
+    }
+  }
+
+  /**
+   * Handle disconnection events
+   */
+  private async handleDisconnection(sessionName: string, tenantId: string) {
+    try {
+      console.log(`Handling disconnection for session: ${sessionName}`);
+      const client = this.connections.get(sessionName);
+      if (client) {
+        try {
+          // stopPhoneWatchdog doesn't take parameters in newer versions
+          // client.stopPhoneWatchdog();
+        } catch (error) {
+          console.error('Error stopping phone watchdog:', error);
+        }
+      }
+
+      // Update database status
+      const instance = await prisma.whatsappInstance.findFirst({
+        where: { name: sessionName, tenantId },
+      });
+
+      if (instance) {
+        await prisma.whatsappInstance.update({
+          where: { id: instance.id },
+          data: {
+            status: 'DISCONNECTED',
+            updatedAt: new Date(),
+          },
+        });
+
+        // Emit disconnection via WebSocket
+        if (this.webSocketService) {
+          this.webSocketService.emitWhatsAppStatus(
+            tenantId,
+            sessionName,
+            'DISCONNECTED'
+          );
+        }
+      }
+
+      // Schedule reconnection attempt
+      this.scheduleReconnection(sessionName, tenantId);
+    } catch (error) {
+      console.error('Error handling disconnection:', error);
+    }
+  }
+
+  /**
+   * Schedule automatic reconnection
+   */
+  private scheduleReconnection(sessionName: string, tenantId: string) {
+    // Clear existing reconnection interval
+    const existingInterval = this.reconnectIntervals.get(sessionName);
+    if (existingInterval) {
+      clearTimeout(existingInterval);
+    }
+
+    // Schedule reconnection in 30 seconds
+    const reconnectTimeout = setTimeout(async () => {
+      try {
+        console.log(`Attempting to reconnect session: ${sessionName}`);
+        await this.createSession(sessionName, tenantId, ''); // userId not needed for reconnection
+      } catch (error) {
+        console.error(`Failed to reconnect session ${sessionName}:`, error);
+        // Schedule another attempt in 2 minutes
+        setTimeout(() => {
+          this.scheduleReconnection(sessionName, tenantId);
+        }, 120000);
+      }
+    }, 30000);
+
+    this.reconnectIntervals.set(sessionName, reconnectTimeout);
+  }
+
+  /**
+   * Check if a session is connected and ready
+   */
+  async isSessionReady(sessionName: string): Promise<boolean> {
+    try {
+      const client = this.connections.get(sessionName);
+      if (!client) {
+        return false;
+      }
+
+      const isConnected = await client.isConnected();
+      return isConnected;
+    } catch (error) {
+      console.error('Error checking session status:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get session phone number
+   */
+  async getSessionPhone(sessionName: string): Promise<string | null> {
+    try {
+      const client = this.connections.get(sessionName);
+      if (!client) {
+        return null;
+      }
+
+      const hostDevice = await client.getHostDevice();
+      return hostDevice.wid.user || null;
+    } catch (error) {
+      console.error('Error getting session phone:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Send typing indicator
+   */
+  async sendTyping(sessionName: string, to: string, isTyping: boolean = true) {
+    try {
+      const client = this.connections.get(sessionName);
+      if (!client) {
+        throw new Error('WhatsApp session not found');
+      }
+
+      if (isTyping) {
+        await client.startTyping(to);
+      } else {
+        await client.stopTyping(to);
+      }
+    } catch (error) {
+      console.error('Error sending typing indicator:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark message as seen
+   */
+  async markAsSeen(sessionName: string, messageId: string) {
+    try {
+      const client = this.connections.get(sessionName);
+      if (!client) {
+        throw new Error('WhatsApp session not found');
+      }
+
+      await client.sendSeen(messageId);
+    } catch (error) {
+      console.error('Error marking message as seen:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get session token for backup/restore
+   */
+  async getSessionToken(sessionName: string) {
+    try {
+      const client = this.connections.get(sessionName);
+      if (!client) {
+        throw new Error('WhatsApp session not found');
+      }
+
+      const token = await client.getSessionTokenBrowser();
+      return token;
+    } catch (error) {
+      console.error('Error getting session token:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Restart a session
+   */
+  async restartSession(sessionName: string, tenantId: string) {
+    try {
+      console.log(`Restarting session: ${sessionName}`);
+      await this.destroySession(sessionName);
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds
+      await this.createSession(sessionName, tenantId, '');
+    } catch (error) {
+      console.error('Error restarting session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle auto close timeout - restart session automatically
+   */
+  private async handleAutoCloseTimeout(sessionName: string, tenantId: string) {
+    try {
+      console.log(`🔄 Handling auto close timeout for session: ${sessionName}`);
+      // Wait a moment before restarting
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // Attempt to restart the session
+      console.log(`🔄 Attempting to restart session: ${sessionName}`);
+      await this.createSession(sessionName, tenantId, '');
+    } catch (error) {
+      console.error(`❌ Failed to restart session ${sessionName}:`, error);
+      // Update database with error status
+      const instance = await prisma.whatsappInstance.findFirst({
+        where: { name: sessionName, tenantId },
+      });
+
+      if (instance) {
+        await prisma.whatsappInstance.update({
+          where: { id: instance.id },
+          data: {
+            status: 'ERROR',
+            updatedAt: new Date(),
+          },
+        });
+      }
     }
   }
 

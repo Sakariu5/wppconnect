@@ -48,6 +48,13 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 function ConnectWhatsAppContent() {
   const router = useRouter();
   const { getAuthHeaders } = useAuth();
+  
+  // Add debug logging
+  useEffect(() => {
+    console.log('ConnectWhatsAppContent mounted');
+    console.log('Current URL:', window.location.href);
+  }, []);
+
   const [step, setStep] = useState<'setup' | 'qr' | 'connecting' | 'connected' | 'error'>('setup');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [sessionName, setSessionName] = useState('');
@@ -56,6 +63,7 @@ function ConnectWhatsAppContent() {
   const [instanceId, setInstanceId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('');
+  const [timeRemaining, setTimeRemaining] = useState<number>(300); // 5 minutes in seconds
 
   // Create WhatsApp instance
   const createWhatsAppInstance = async () => {
@@ -128,8 +136,12 @@ function ConnectWhatsAppContent() {
 
       const data = await response.json();
       
+      console.log('Polling response:', data); // Debug log
+      
       if (data.qrCode && data.qrCode !== qrCode) {
+        console.log('Setting new QR code'); // Debug log
         setQrCode(data.qrCode);
+        setStep('qr');
       }
 
       setConnectionStatus(data.status);
@@ -142,7 +154,8 @@ function ConnectWhatsAppContent() {
         setError('Error de conexión. Por favor intenta nuevamente.');
         setStep('error');
         return false; // Stop polling
-      } else if (data.status === 'QR_CODE' && !qrCode) {
+      } else if (data.status === 'QR_CODE') {
+        // Always set to QR step if status is QR_CODE
         setStep('qr');
       }
 
@@ -180,14 +193,26 @@ function ConnectWhatsAppContent() {
         }
       }, 2000);
 
-      // Clean up interval after 5 minutes
+      // Start countdown timer
+      let currentTime = 300;
+      setTimeRemaining(currentTime); // Reset to 5 minutes
+      const countdownInterval = setInterval(() => {
+        currentTime = currentTime - 1;
+        setTimeRemaining(currentTime);
+        if (currentTime <= 0) {
+          clearInterval(countdownInterval);
+        }
+      }, 1000);
+
+      // Clean up interval after 6 minutes (longer than backend timeout)
       setTimeout(() => {
         clearInterval(pollInterval);
+        clearInterval(countdownInterval);
         if (step !== 'connected') {
-          setError('Tiempo de conexión agotado. Por favor intenta nuevamente.');
+          setError('Tiempo de conexión agotado. La sesión se reiniciará automáticamente...');
           setStep('error');
         }
-      }, 300000); // 5 minutes
+      }, 360000); // 6 minutes
 
     } catch (error: any) {
       setError(error.message || 'Error al crear la conexión');
@@ -199,16 +224,26 @@ function ConnectWhatsAppContent() {
   const retryConnection = () => {
     setError('');
     setQrCode('');
+    setTimeRemaining(300); // Reset countdown
     setStep('setup');
   };
 
   const goBack = () => {
-    if (step === 'setup' || step === 'error') {
-      router.push('/dashboard');
-    } else {
-      setStep('setup');
-      setError('');
-      setQrCode('');
+    try {
+      if (step === 'setup' || step === 'error') {
+        console.log('Navigating to dashboard...');
+        router.push('/dashboard');
+      } else {
+        setStep('setup');
+        setError('');
+        setQrCode('');
+      }
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback: use window.location if router fails
+      if (typeof window !== 'undefined') {
+        window.location.href = '/dashboard';
+      }
     }
   };
 
@@ -280,6 +315,50 @@ function ConnectWhatsAppContent() {
                   <QrCode className="h-4 w-4 mr-2" />
                   Generar Código QR
                 </Button>
+                
+                {/* Debug section */}
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={() => {
+                      console.log('Debug: Attempting navigation to dashboard');
+                      try {
+                        router.push('/dashboard');
+                      } catch (error) {
+                        console.error('Debug: Router navigation failed:', error);
+                        window.location.href = '/dashboard';
+                      }
+                    }}
+                  >
+                    🔧 Debug: Volver al Dashboard
+                  </Button>
+                  
+                  {/* Add debug info */}
+                  <div className="mt-2 p-2 bg-gray-100 rounded text-xs">
+                    <strong>Debug Info:</strong><br/>
+                    Step: {step}<br/>
+                    Instance ID: {instanceId}<br/>
+                    Connection Status: {connectionStatus}<br/>
+                    QR Code: {qrCode ? 'Present' : 'None'}<br/>
+                    Time Remaining: {timeRemaining}s
+                  </div>
+                  
+                  {instanceId && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full mt-2"
+                      onClick={async () => {
+                        console.log('Manual polling QR code...');
+                        await pollQRCodeAndStatus(instanceId);
+                      }}
+                    >
+                      🔄 Test QR Code Polling
+                    </Button>
+                  )}
+                </div>
               </form>
             </CardContent>
           </Card>
@@ -327,6 +406,21 @@ function ConnectWhatsAppContent() {
                   <li>Toca &ldquo;Vincular un dispositivo&rdquo;</li>
                   <li>Escanea este código QR</li>
                 </ol>
+              </div>
+
+              {/* Countdown Timer */}
+              <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-center text-blue-700">
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="font-medium">
+                    Tiempo restante: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+                <p className="text-xs text-blue-600 mt-1">
+                  {timeRemaining <= 60 ? '⚠️ El código expirará pronto' : 'Tienes 5 minutos para escanear el código'}
+                </p>
               </div>
 
               <Alert className="max-w-md mx-auto">
