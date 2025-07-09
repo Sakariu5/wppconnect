@@ -36,8 +36,9 @@ import {
   Play,
   Pause
 } from 'lucide-react';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
-export default function ChatbotsPage() {
+function ChatbotsContent() {
   const router = useRouter();
 
   // Datos simulados de chatbots
@@ -240,5 +241,13 @@ export default function ChatbotsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ChatbotsPage() {
+  return (
+    <ProtectedRoute>
+      <ChatbotsContent />
+    </ProtectedRoute>
   );
 }

@@ -18,7 +18,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/stores/auth';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -44,7 +44,6 @@ export function DashboardComponent() {
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/auth/login';
   };
 
   return (

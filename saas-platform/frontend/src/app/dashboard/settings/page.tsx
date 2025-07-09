@@ -18,7 +18,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/stores/auth';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -40,10 +40,11 @@ import {
   Eye,
   Lock
 } from 'lucide-react';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
-export default function SettingsPage() {
+function SettingsContent() {
   const router = useRouter();
-  const { user, tenant } = useAuth();
+  const { user, tenant, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'profile' | 'company' | 'appearance' | 'security'>('profile');
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
@@ -105,6 +106,10 @@ export default function SettingsPage() {
     setSuccess('Contraseña actualizada correctamente');
     setSecurityData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     setTimeout(() => setSuccess(''), 3000);
+  };
+
+  const handleLogout = () => {
+    logout();
   };
 
   const tabs = [
@@ -398,10 +403,16 @@ export default function SettingsPage() {
                       onChange={(e) => setSecurityData({...securityData, confirmPassword: e.target.value})}
                     />
                   </div>
-                  <Button onClick={handleSecuritySave}>
-                    <Save className="h-4 w-4 mr-2" />
-                    Cambiar Contraseña
-                  </Button>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button onClick={handleSecuritySave}>
+                      <Save className="h-4 w-4 mr-2" />
+                      Cambiar Contraseña
+                    </Button>
+                    <Button variant="destructive" onClick={handleLogout}>
+                      <Lock className="h-4 w-4 mr-2" />
+                      Cerrar Sesión
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -409,5 +420,13 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <ProtectedRoute>
+      <SettingsContent />
+    </ProtectedRoute>
   );
 }

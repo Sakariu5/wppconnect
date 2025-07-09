@@ -38,6 +38,7 @@ import {
   Save,
   Play
 } from 'lucide-react';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
 interface ChatbotStep {
   id: string;
@@ -46,7 +47,7 @@ interface ChatbotStep {
   responses?: string[];
 }
 
-export default function NewChatbotPage() {
+function NewChatbotContent() {
   const router = useRouter();
   const [chatbotName, setChatbotName] = useState('');
   const [chatbotDescription, setChatbotDescription] = useState('');
@@ -352,5 +353,13 @@ export default function NewChatbotPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function NewChatbotPage() {
+  return (
+    <ProtectedRoute>
+      <NewChatbotContent />
+    </ProtectedRoute>
   );
 }
