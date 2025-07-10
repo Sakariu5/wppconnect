@@ -30,44 +30,42 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import {
-  MessageSquare,
-  BarChart3,
-  Plus,
-  Phone,
-  Bot,
-  Activity,
   LogOut,
-  Clock,
   QrCode,
   Send,
   Inbox,
   User,
   RefreshCw,
+  Plus,
+  Phone,
 } from 'lucide-react';
 
 export function DashboardComponent() {
   const { user, tenant, logout, token } = useAuth();
-  const { instances, connectedInstances, activeSessions, hasConnectedInstances, loading, recentActivity, recentMessages, rateLimitInfo, refreshInstances, refreshMessages, getSessionInfo } = useWhatsApp();
+  const { connectedInstances, recentActivity, recentMessages, loading, refreshInstances, refreshMessages } = useWhatsApp();
   const router = useRouter();
-  const [selectedSession, setSelectedSession] = useState<any>(null);
-  const [sessionDetails, setSessionDetails] = useState<any>(null);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-
+  
   // Estados para envío de mensajes
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('');
   const [messageRecipient, setMessageRecipient] = useState<string>('');
   const [messageText, setMessageText] = useState<string>('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [sendResult, setSendResult] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  
+  // Estados para mensajes filtrados por sesión
+  const [filteredMessages, setFilteredMessages] = useState(recentMessages);
 
-  // Debug logs para verificar qué datos estamos recibiendo
+  // Filtrar mensajes cuando cambie la sesión seleccionada o los mensajes
   useEffect(() => {
-    console.log('🎨 Dashboard recentActivity update:', recentActivity);
-    console.log('📱 Dashboard instances:', instances);
-    console.log('🟢 Connected instances:', connectedInstances);
-    console.log('⚡ Active sessions:', activeSessions);
-    console.log('💬 Recent messages:', recentMessages);
-  }, [recentActivity, instances, connectedInstances, activeSessions, recentMessages]);
+    if (selectedInstanceId) {
+      const filtered = recentMessages.filter(
+        message => message.conversation.whatsappInstance.id === selectedInstanceId
+      );
+      setFilteredMessages(filtered);
+    } else {
+      setFilteredMessages(recentMessages);
+    }
+  }, [selectedInstanceId, recentMessages]);
 
   // Refresh automático al cargar el componente
   useEffect(() => {
@@ -79,58 +77,57 @@ export function DashboardComponent() {
     logout();
   };
 
-  const handleSessionClick = async (instance: any) => {
-    if (instance.status === 'CONNECTED') {
-      setSelectedSession(instance);
-      setLoadingDetails(true);
-      
-      try {
-        const details = await getSessionInfo(instance.id);
-        setSessionDetails(details);
-      } catch (error) {
-        console.error('Error getting session details:', error);
-      } finally {
-        setLoadingDetails(false);
-      }
-    }
+  const handleConnectWhatsApp = () => {
+    router.push('/dashboard/whatsapp/connect');
   };
 
   // Función mejorada para limpiar y validar números
   const cleanAndValidateNumber = (input: string): { valid: boolean; cleaned: string; error?: string } => {
     console.log('🧹 Cleaning number input:', { original: input, length: input.length });
     
-    // Remover todos los caracteres que no sean números
-    const cleaned = input.replace(/\D/g, '');
-    console.log('🧹 After cleaning:', { cleaned, length: cleaned.length });
+    // Quitar todos los caracteres que no sean dígitos
+    const digitsOnly = input.replace(/\D/g, '');
+    console.log('🔢 Digits only:', { digitsOnly, length: digitsOnly.length });
     
-    if (!cleaned) {
-      return { valid: false, cleaned: '', error: 'Número vacío después de limpiar' };
+    // Validaciones básicas
+    if (digitsOnly.length < 10) {
+      return { valid: false, cleaned: digitsOnly, error: 'Número muy corto (mínimo 10 dígitos)' };
     }
     
-    if (cleaned.length < 10) {
-      return { valid: false, cleaned, error: 'Número muy corto (mínimo 10 dígitos)' };
-    }
-    
-    if (cleaned.length > 15) {
-      return { valid: false, cleaned, error: 'Número muy largo (máximo 15 dígitos)' };
+    if (digitsOnly.length > 15) {
+      return { valid: false, cleaned: digitsOnly, error: 'Número muy largo (máximo 15 dígitos)' };
     }
     
     // Validaciones específicas por país
-    // Para México: +52 1 55 4968 1111 = 5215549681111 (13 dígitos)
-    if (cleaned.startsWith('52') && cleaned.length === 13) {
-      return { valid: true, cleaned };
+    if (digitsOnly.startsWith('52')) {
+      // México: 52 + 10 u 11 dígitos
+      if (digitsOnly.length === 12 || digitsOnly.length === 13) {
+        return { valid: true, cleaned: digitsOnly };
+      } else {
+        return { valid: false, cleaned: digitsOnly, error: 'Formato México incorrecto (52 + 10/11 dígitos)' };
+      }
+    } else if (digitsOnly.startsWith('1')) {
+      // EE.UU./Canadá: 1 + 10 dígitos
+      if (digitsOnly.length === 11) {
+        return { valid: true, cleaned: digitsOnly };
+      } else {
+        return { valid: false, cleaned: digitsOnly, error: 'Formato EE.UU./Canadá incorrecto (1 + 10 dígitos)' };
+      }
+    } else if (digitsOnly.startsWith('34')) {
+      // España: 34 + 9 dígitos
+      if (digitsOnly.length === 11) {
+        return { valid: true, cleaned: digitsOnly };
+      } else {
+        return { valid: false, cleaned: digitsOnly, error: 'Formato España incorrecto (34 + 9 dígitos)' };
+      }
     }
     
-    // Para México sin el "1" de área metropolitana: +52 55 4968 1111 = 52554968111 (11 dígitos)
-    if (cleaned.startsWith('52') && cleaned.length === 12) {
-      return { valid: true, cleaned };
+    // Formato internacional genérico (10-15 dígitos)
+    if (digitsOnly.length >= 10 && digitsOnly.length <= 15) {
+      return { valid: true, cleaned: digitsOnly };
     }
     
-    if (cleaned.startsWith('1') && cleaned.length === 11) {
-      return { valid: false, cleaned, error: 'Para EE.UU./Canadá: 1 + 10 dígitos (total 11)' };
-    }
-    
-    return { valid: true, cleaned };
+    return { valid: false, cleaned: digitsOnly, error: 'Formato de número no válido' };
   };
 
   const handleSendMessage = async () => {
@@ -139,26 +136,10 @@ export function DashboardComponent() {
       return;
     }
 
-    // Verificar rate limiting
-    if (rateLimitInfo.isRateLimited && rateLimitInfo.nextRetryTime) {
-      const remainingTime = Math.ceil((rateLimitInfo.nextRetryTime.getTime() - Date.now()) / 1000);
-      if (remainingTime > 0) {
-        setSendResult({ 
-          type: 'error', 
-          message: `⏳ Rate limited. Reintenta en ${remainingTime} segundos` 
-        });
-        return;
-      }
-    }
+    const validation = cleanAndValidateNumber(messageRecipient);
+    const cleaned = validation.cleaned;
 
-    const { valid, cleaned, error } = cleanAndValidateNumber(messageRecipient);
-
-    if (!valid) {
-      setSendResult({ type: 'error', message: error || 'Número inválido' });
-      return;
-    }
-
-    console.log('📤 Sending message:', {
+    console.log('📤 Sending message details:', {
       instanceId: selectedInstanceId,
       originalRecipient: messageRecipient,
       cleanRecipient: cleaned,
@@ -187,45 +168,43 @@ export function DashboardComponent() {
       });
 
       console.log('📡 Response status:', response.status);
+      const responseText = await response.text();
+      console.log('📄 Response text:', responseText);
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error('❌ Failed to parse response as JSON:', e);
+        throw new Error(`Server response was not valid JSON: ${responseText.substring(0, 100)}`);
+      }
 
       if (response.ok) {
-        const result = await response.json();
-        setSendResult({ type: 'success', message: '✅ Mensaje enviado exitosamente!' });
+        console.log('✅ Message sent successfully:', data);
+        setSendResult({ 
+          type: 'success', 
+          message: `✅ Mensaje enviado correctamente a +${cleaned}` 
+        });
         setMessageText('');
-        console.log('✅ Message sent successfully:', result);
-      } else if (response.status === 429) {
+        setMessageRecipient('');
+        
+        // Refresh messages after successful send
+        setTimeout(() => {
+          refreshMessages();
+        }, 2000);
+      } else {
+        console.error('❌ Send message failed:', data);
         setSendResult({ 
           type: 'error', 
-          message: '⚠️ Demasiadas solicitudes. Espera un momento antes de reintentar.' 
+          message: `❌ Error: ${data.error || data.details || 'Error desconocido'}` 
         });
-      } else if (response.status === 503) {
-        // Session being reconnected
-        const errorData = await response.json();
-        if (errorData.action === 'reconnecting') {
-          setSendResult({ 
-            type: 'error', 
-            message: '🔄 Sesión desconectada. Reconectando automáticamente... Inténtalo en 30 segundos.' 
-          });
-          // Auto-refresh instances in 10 seconds to get updated status
-          setTimeout(() => {
-            refreshInstances();
-          }, 10000);
-        } else {
-          setSendResult({ type: 'error', message: errorData.error || 'Servicio temporalmente no disponible' });
-        }
-      } else {
-        const errorText = await response.text();
-        console.error('❌ Send message error response:', errorText);
-        try {
-          const error = JSON.parse(errorText);
-          setSendResult({ type: 'error', message: error.error || 'Error enviando mensaje' });
-        } catch {
-          setSendResult({ type: 'error', message: `Error HTTP ${response.status}: ${errorText}` });
-        }
       }
-    } catch (error) {
-      console.error('❌ Send message network error:', error);
-      setSendResult({ type: 'error', message: `Error de conexión: ${error.message}` });
+    } catch (error: any) {
+      console.error('❌ Send message error:', error);
+      setSendResult({ 
+        type: 'error', 
+        message: `❌ Error de conexión: ${error.message}` 
+      });
     } finally {
       setSendingMessage(false);
     }
@@ -234,20 +213,14 @@ export function DashboardComponent() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <MessageSquare className="h-8 w-8 text-blue-600" />
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">
-                    {tenant?.name || 'Dashboard'}
-                  </h1>
-                  <p className="text-sm text-gray-600">
-                    {tenant?.subdomain}.wppconnect.app
-                  </p>
-                </div>
+      <header className="bg-white shadow">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 justify-between items-center">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <h1 className="text-xl font-bold text-gray-900">
+                  📱 WhatsApp Dashboard
+                </h1>
               </div>
               <span
                 className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ml-4 ${
@@ -266,27 +239,17 @@ export function DashboardComponent() {
                 </p>
                 <p className="text-xs text-gray-600">{user?.email}</p>
               </div>
-              <div className="flex space-x-2">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => router.push('/dashboard/chatbots')}
-                >
-                  <Bot className="h-4 w-4 mr-2" />
-                  Chatbots
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleLogout}>
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Salir
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Salir
+              </Button>
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="p-6">
+      <main className="p-6 max-w-7xl mx-auto">
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
@@ -297,742 +260,310 @@ export function DashboardComponent() {
           </p>
         </div>
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Números Conectados
-              </CardTitle>
-              <Phone className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{connectedInstances.length}</div>
-              <p className="text-xs text-muted-foreground">
-                {connectedInstances.length === 0 ? 'Ningún número conectado aún' : `${connectedInstances.length} número${connectedInstances.length > 1 ? 's' : ''} conectado${connectedInstances.length > 1 ? 's' : ''}`}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Chatbots Activos
-              </CardTitle>
-              <Bot className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">0</div>
-              <p className="text-xs text-muted-foreground">
-                <button 
-                  onClick={() => router.push('/dashboard/chatbots')}
-                  className="text-blue-600 hover:text-blue-700 underline"
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Columna Izquierda */}
+          <div className="space-y-6">
+            {/* Botón Conectar WhatsApp */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Phone className="h-5 w-5 mr-2" />
+                  Conectar WhatsApp
+                </CardTitle>
+                <CardDescription>
+                  Conecta un nuevo número de WhatsApp
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  className="w-full" 
+                  onClick={handleConnectWhatsApp}
+                  size="lg"
                 >
-                  Crea tu primer chatbot
-                </button>
-              </p>
-            </CardContent>
-          </Card>
+                  <Plus className="h-5 w-5 mr-2" />
+                  Conectar Número de WhatsApp
+                </Button>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Conversaciones Hoy
-              </CardTitle>
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">0</div>
-              <p className="text-xs text-muted-foreground">
-                Sin conversaciones aún
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Respuestas Automáticas
-              </CardTitle>
-              <Activity className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">0%</div>
-              <p className="text-xs text-muted-foreground">
-                Tasa de automatización
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Actividad Reciente */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Clock className="h-5 w-5 mr-2" />
-              Actividad Reciente
-            </CardTitle>
-            <CardDescription>
-              Últimas conexiones y códigos QR generados
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Botón de refresh prominente */}
-            <div className="flex justify-between items-center mb-4">
-              <div className="text-sm text-gray-600">
-                {loading ? 'Actualizando datos...' : `Última actualización: ${new Date().toLocaleTimeString()}`}
-                {rateLimitInfo.isRateLimited && rateLimitInfo.nextRetryTime && (
-                  <div className="text-orange-600 text-xs mt-1">
-                    ⚠️ Rate limited - Siguiente actualización disponible en: {Math.max(0, Math.ceil((rateLimitInfo.nextRetryTime.getTime() - Date.now()) / 1000))}s
-                  </div>
-                )}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={refreshInstances}
-                disabled={loading || (rateLimitInfo.isRateLimited && rateLimitInfo.nextRetryTime && rateLimitInfo.nextRetryTime.getTime() > Date.now())}
-                className="flex items-center space-x-2"
-              >
-                <Activity className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                <span>
-                  {loading ? 'Actualizando...' : 
-                   rateLimitInfo.isRateLimited ? 'Esperando...' : 
-                   'Refrescar'}
-                </span>
-              </Button>
-            </div>
-            
-            <div className="space-y-6">
-              {/* DEBUG: Información visible para debugging */}
-              <div className="border rounded-lg p-4 bg-gray-50 border-gray-200 mb-4">
-                <h4 className="font-medium text-gray-900 mb-2">🔍 Debug Info (temporal)</h4>
-                <div className="text-sm space-y-1">
-                  <div>Total instancias: {instances.length}</div>
-                  <div>Instancias conectadas: {connectedInstances.length}</div>
-                  <div>Sesiones activas: {activeSessions.length}</div>
-                  <div>Mensajes recientes: {recentMessages.length}</div>
-                  <div>¿Tiene QR reciente?: {recentActivity?.latestQr ? 'Sí' : 'No'}</div>
-                  <div>¿Tiene conexión reciente?: {recentActivity?.latestConnection ? 'Sí' : 'No'}</div>
-                  {instances.length > 0 && (
-                    <div className="mt-2">
-                      <div className="font-medium">Instancias encontradas:</div>
-                      {instances.map((inst, i) => (
-                        <div key={i} className="ml-2 text-xs">
-                          {i + 1}. {inst.name} - {inst.status} - QR: {inst.qrCode ? 'Sí' : 'No'}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {recentMessages.length > 0 && (
-                    <div className="mt-2">
-                      <div className="font-medium">Mensajes recientes encontrados:</div>
-                      {recentMessages.slice(0, 3).map((msg, i) => (
-                        <div key={i} className="ml-2 text-xs">
-                          {i + 1}. De: {msg.conversation.contactPhone} - {msg.content.substring(0, 50)}...
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Último QR generado */}
-              {recentActivity?.latestQr ? (
-                <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
-                  <div className="flex items-start space-x-4">
-                    <div className="flex-shrink-0">
-                      <QrCode className="h-6 w-6 text-blue-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-medium text-blue-900">
-                          QR Code Generado
-                        </h3>
-                        <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                          {new Date(recentActivity.latestQr.timestamp).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-sm text-blue-700 mt-1">
-                        Sesión: {recentActivity.latestQr.sessionName}
-                      </p>
-                      <div className="mt-3 flex items-center space-x-4">
-                        <div className="bg-white p-2 rounded border">
-                          <Image
-                            src={recentActivity.latestQr.qrCode}
-                            alt="Código QR"
-                            width={128}
-                            height={128}
-                            className="w-32 h-32"
-                          />
-                        </div>
-                        <div className="text-xs text-blue-600">
-                          <p>📱 Escanea este código con WhatsApp</p>
-                          <p>⚡ Estado: Esperando conexión</p>
-                        </div>
-                      </div>
+            {/* Mostrar QR si existe */}
+            {recentActivity?.latestQr && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <QrCode className="h-5 w-5 mr-2" />
+                    Código QR Generado
+                  </CardTitle>
+                  <CardDescription>
+                    Escanea este código con WhatsApp
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="text-center">
+                  <div className="mb-4">
+                    <div className="inline-block p-4 bg-white rounded-lg border">
+                      <Image
+                        src={recentActivity.latestQr.qrCode}
+                        alt="Código QR"
+                        width={200}
+                        height={200}
+                        className="w-48 h-48"
+                      />
                     </div>
                   </div>
-                </div>
-              ) : null}
-
-              {/* Última conexión */}
-              {recentActivity?.latestConnection ? (
-                <div className="border rounded-lg p-4 bg-green-50 border-green-200">
-                  <div className="flex items-start space-x-4">
-                    <div className="flex-shrink-0">
-                      <Phone className="h-6 w-6 text-green-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-medium text-green-900">
-                          Sesión Conectada
-                        </h3>
-                        <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
-                          {new Date(recentActivity.latestConnection.timestamp).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-sm text-green-700 mt-1">
-                        📱 {recentActivity.latestConnection.phoneNumber}
-                      </p>
-                      <p className="text-sm text-green-700">
-                        🏷️ {recentActivity.latestConnection.sessionName}
-                      </p>
-                      <div className="mt-2 flex items-center space-x-4 text-xs">
-                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded">
-                          ✅ Conectado y activo
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {/* Si no hay actividad reciente */}
-              {!recentActivity?.latestQr && !recentActivity?.latestConnection && (
-                <div className="text-center py-8 text-gray-500">
-                  <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                  <h3 className="font-medium text-gray-700 mb-2">
-                    Sin actividad reciente
-                  </h3>
-                  <p className="text-sm">
-                    Conecta tu primer número de WhatsApp para ver la actividad aquí
+                  <p className="text-sm text-gray-600 mb-2">
+                    Sesión: <span className="font-medium">{recentActivity.latestQr.sessionName}</span>
                   </p>
-                  <Button 
-                    className="mt-4" 
-                    onClick={() => router.push('/dashboard/whatsapp/connect')}
+                  <p className="text-xs text-gray-500">
+                    Generado: {new Date(recentActivity.latestQr.timestamp).toLocaleString()}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Selector de Sesión y Envío Rápido */}
+            {connectedInstances.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Send className="h-5 w-5 mr-2" />
+                    Enviar Mensaje Rápido
+                  </CardTitle>
+                  <CardDescription>
+                    Envía un mensaje de prueba a cualquier contacto
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* Selector de instancia */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Seleccionar número de WhatsApp:
+                      </label>
+                      <select
+                        value={selectedInstanceId}
+                        onChange={(e) => setSelectedInstanceId(e.target.value)}
+                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                      >
+                        <option value="">Selecciona una sesión conectada</option>
+                        {connectedInstances.map((instance) => (
+                          <option key={instance.id} value={instance.id}>
+                            {instance.name} - {instance.phone || instance.phoneNumber || 'Sin número'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Número destino */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Número destino (con código de país):
+                      </label>
+                      <input
+                        type="text"
+                        value={messageRecipient}
+                        onChange={(e) => setMessageRecipient(e.target.value)}
+                        placeholder="Ej: 5215549681111, 5255496811111, 12345678901, etc."
+                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <div className="mt-1 text-xs text-gray-500">
+                        <div className="mb-2">
+                          <strong>Formatos válidos:</strong>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>🇲🇽 México: 52 + 10/11 dígitos</div>
+                          <div>🇺🇸 EE.UU.: 1 + 10 dígitos</div>
+                          <div>🇪🇸 España: 34 + 9 dígitos</div>
+                          <div>🌍 Otros: Código país + número</div>
+                        </div>
+                        {messageRecipient && (
+                          <div className="mt-2 p-2 bg-gray-50 rounded border text-xs">
+                            {(() => {
+                              const clean = messageRecipient.replace(/\D/g, '');
+                              if (!clean) return '⚪ Ingresa un número';
+                              if (clean.length < 10) return '🔴 Muy corto (mínimo 10 dígitos)';
+                              if (clean.length > 15) return '🔴 Muy largo (máximo 15 dígitos)';
+                              if (clean.startsWith('52') && clean.length === 13) return '🟢 México válido (con área metropolitana)';
+                              if (clean.startsWith('52') && clean.length === 12) return '🟢 México válido';
+                              if (clean.startsWith('1') && clean.length === 11) return '🟢 EE.UU./Canadá válido';
+                              if (clean.startsWith('34') && clean.length === 11) return '🟢 España válido';
+                              if (clean.length >= 10 && clean.length <= 15) return '🟡 Formato internacional';
+                              return '🔴 Formato incorrecto';
+                            })()}
+                            <br/>
+                            <span className="text-blue-600">📱 Se enviará a: +{messageRecipient.replace(/\D/g, '')}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Mensaje */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Mensaje:
+                      </label>
+                      <textarea
+                        value={messageText}
+                        onChange={(e) => setMessageText(e.target.value)}
+                        placeholder="Escribe tu mensaje aquí..."
+                        rows={3}
+                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    {/* Resultado */}
+                    {sendResult && (
+                      <div className={`p-3 rounded-md ${
+                        sendResult.type === 'success' 
+                          ? 'bg-green-50 border border-green-200 text-green-800'
+                          : 'bg-red-50 border border-red-200 text-red-800'
+                      }`}>
+                        {sendResult.message}
+                      </div>
+                    )}
+
+                    {/* Botón enviar */}
+                    <Button
+                      onClick={handleSendMessage}
+                      disabled={sendingMessage || !selectedInstanceId || !messageRecipient || !messageText}
+                      className="w-full"
+                      size="lg"
+                    >
+                      <Send className={`h-4 w-4 mr-2 ${sendingMessage ? 'animate-pulse' : ''}`} />
+                      {sendingMessage ? 'Enviando...' : 'Enviar Mensaje'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Columna Derecha - Mensajes Recientes */}
+          <div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center">
+                    <Inbox className="h-5 w-5 mr-2" />
+                    Mensajes Recientes
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={refreshMessages}
+                    disabled={loading}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Conectar WhatsApp
+                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                   </Button>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Enviar Mensaje Rápido */}
-        {connectedInstances.length > 0 && (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Send className="h-5 w-5 mr-2" />
-                Enviar Mensaje Rápido
-              </CardTitle>
-              <CardDescription>
-                Envía un mensaje de prueba a cualquier contacto
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* Selector de instancia */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Seleccionar número de WhatsApp:
-                  </label>
-                  <select
-                    value={selectedInstanceId}
-                    onChange={(e) => setSelectedInstanceId(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Selecciona una sesión conectada</option>
-                    {connectedInstances.map((instance) => (
-                      <option key={instance.id} value={instance.id}>
-                        {instance.name} - {instance.phone || instance.phoneNumber || 'Sin número'}
-                      </option>
+                </CardTitle>
+                <CardDescription>
+                  {selectedInstanceId 
+                    ? `Mensajes de la sesión seleccionada (${filteredMessages.length})`
+                    : `Últimos mensajes de todas tus instancias (${recentMessages.length})`
+                  }
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {(selectedInstanceId ? filteredMessages : recentMessages).length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Inbox className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                    <h3 className="font-medium text-gray-700 mb-2">
+                      Sin mensajes recientes
+                    </h3>
+                    <p className="text-sm">
+                      {selectedInstanceId 
+                        ? 'No hay mensajes para esta sesión'
+                        : 'Los mensajes que recibas aparecerán aquí'
+                      }
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    {(selectedInstanceId ? filteredMessages : recentMessages).slice(0, 10).map((message) => (
+                      <div
+                        key={message.id}
+                        className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start space-x-3 flex-1">
+                            <div className="flex-shrink-0">
+                              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                <User className="h-5 w-5 text-blue-600" />
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-2">
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {message.conversation.contactName || 'Contacto sin nombre'}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    📱 {message.conversation.contactPhone}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs text-gray-500">
+                                    {new Date(message.createdAt).toLocaleString()}
+                                  </p>
+                                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                    {message.conversation.whatsappInstance.name}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="bg-gray-100 rounded-lg p-3">
+                                <p className="text-sm text-gray-800">
+                                  {message.content}
+                                </p>
+                                {message.messageType !== 'chat' && (
+                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-200 text-gray-700 mt-2">
+                                    {message.messageType === 'image' ? '📷 Imagen' :
+                                     message.messageType === 'document' ? '📄 Documento' :
+                                     message.messageType === 'audio' ? '🎵 Audio' :
+                                     message.messageType === 'video' ? '🎥 Video' :
+                                     message.messageType}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     ))}
-                  </select>
-                </div>
-
-                {/* Número destino */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Número destino (con código de país):
-                  </label>
-                  <input
-                    type="text"
-                    value={messageRecipient}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      console.log('📝 Input changed:', { 
-                        value, 
-                        length: value.length,
-                        hasSpaces: value.includes(' '),
-                        hasDashes: value.includes('-'),
-                        hasParens: value.includes('(') || value.includes(')'),
-                        isPasted: value.length > messageRecipient.length + 5 // Detectar paste
-                      });
-                      setMessageRecipient(value);
-                    }}
-                    placeholder="Ej: 5215549681111, 5255496811111, 12345678901, etc."
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                  <div className="mt-1 text-xs text-gray-500">
-                    <div className="mb-2">
-                      <strong>Formatos válidos:</strong>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>🇲🇽 México: 52 + 10/11 dígitos</div>
-                      <div>🇺🇸 EE.UU.: 1 + 10 dígitos</div>
-                      <div>🇪🇸 España: 34 + 9 dígitos</div>
-                      <div>🌍 Otros: Código país + número</div>
-                    </div>
-                    {messageRecipient && (
-                      <div className="mt-2 p-2 bg-gray-50 rounded border text-xs">
-                        {(() => {
-                          const clean = messageRecipient.replace(/\D/g, '');
-                          if (!clean) return '⚪ Ingresa un número';
-                          if (clean.length < 10) return '🔴 Muy corto (mínimo 10 dígitos)';
-                          if (clean.length > 15) return '🔴 Muy largo (máximo 15 dígitos)';
-                          if (clean.startsWith('52') && clean.length === 13) return '🟢 México válido (con área metropolitana)';
-                          if (clean.startsWith('52') && clean.length === 12) return '🟢 México válido';
-                          if (clean.startsWith('1') && clean.length === 11) return '🟢 EE.UU./Canadá válido';
-                          if (clean.startsWith('34') && clean.length === 11) return '🟢 España válido';
-                          if (clean.length >= 10 && clean.length <= 15) return '🟡 Formato internacional';
-                          return '🔴 Formato incorrecto';
-                        })()}
-                        <br/>
-                        <span className="text-blue-600">📱 Se enviará a: +{messageRecipient.replace(/\D/g, '')}</span>
+                    
+                    {(selectedInstanceId ? filteredMessages : recentMessages).length > 10 && (
+                      <div className="text-center pt-4">
+                        <p className="text-sm text-gray-500">
+                          Mostrando los 10 mensajes más recientes de {(selectedInstanceId ? filteredMessages : recentMessages).length} total
+                        </p>
                       </div>
                     )}
                   </div>
-                </div>
-
-                {/* Mensaje */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Mensaje:
-                  </label>
-                  <textarea
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    placeholder="Escribe tu mensaje aquí..."
-                    rows={3}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                {/* Resultado */}
-                {sendResult && (
-                  <div className={`p-3 rounded-md ${
-                    sendResult.type === 'success' 
-                      ? 'bg-green-50 border border-green-200 text-green-800'
-                      : 'bg-red-50 border border-red-200 text-red-800'
-                  }`}>
-                    {sendResult.message}
-                  </div>
                 )}
-
-                {/* Botón enviar */}
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={sendingMessage || !selectedInstanceId || !messageRecipient || !messageText}
-                  className="w-full"
-                >
-                  <Send className={`h-4 w-4 mr-2 ${sendingMessage ? 'animate-pulse' : ''}`} />
-                  {sendingMessage ? 'Enviando...' : 'Enviar Mensaje'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* WhatsApp Sessions Dashboard */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Phone className="h-5 w-5 mr-2" />
-                WhatsApp
-              </CardTitle>
-              <CardDescription>
-                Gestiona tus conexiones de WhatsApp
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <Button 
-                  className="w-full" 
-                  onClick={() => router.push('/dashboard/whatsapp/connect')}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Conectar Número
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={refreshInstances}
-                  disabled={loading}
-                >
-                  {loading ? 'Actualizando...' : 'Actualizar Estado'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Session Statistics */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <BarChart3 className="h-5 w-5 mr-2" />
-                Estadísticas
-              </CardTitle>
-              <CardDescription>
-                Resumen de tus sesiones
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Total Sesiones:</span>
-                  <span className="font-medium">{instances.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Conectadas:</span>
-                  <span className="font-medium text-green-600">{connectedInstances.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Activas:</span>
-                  <span className="font-medium text-blue-600">{activeSessions.length}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Quick Create */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Bot className="h-5 w-5 mr-2" />
-                Crear Chatbot
-              </CardTitle>
-              <CardDescription>
-                Automatiza conversaciones
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button 
-                className="w-full" 
-                variant="outline" 
-                onClick={() => router.push('/dashboard/chatbots/new')}
-                disabled={!hasConnectedInstances}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Nuevo Chatbot
-              </Button>
-              {!hasConnectedInstances && (
-                <p className="text-xs text-gray-500 mt-2">
-                  Necesitas conectar WhatsApp primero
-                </p>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        {/* Sessions List */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center">
-                <Phone className="h-5 w-5 mr-2" />
-                Sesiones de WhatsApp
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={refreshInstances}
-                disabled={loading}
+        {/* Información de estado si no hay conexiones */}
+        {connectedInstances.length === 0 && (
+          <Card className="mt-8">
+            <CardContent className="text-center py-8">
+              <Phone className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-medium text-gray-900 mb-2">
+                Sin conexiones de WhatsApp
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Para empezar a enviar mensajes, necesitas conectar tu primer número de WhatsApp
+              </p>
+              <Button 
+                onClick={handleConnectWhatsApp}
+                size="lg"
               >
-                <Activity className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                <Plus className="h-5 w-5 mr-2" />
+                Conectar WhatsApp
               </Button>
-            </CardTitle>
-            <CardDescription>
-              Estado detallado de todas tus conexiones
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {instances.length === 0 ? (
-              <div className="text-center py-8">
-                <Phone className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Sin conexiones de WhatsApp
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  Conecta tu primer número de WhatsApp para empezar
-                </p>
-                <Button onClick={() => router.push('/dashboard/whatsapp/connect')}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Conectar WhatsApp
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {instances.map((instance) => {
-                  const activeSession = activeSessions.find(
-                    (session) => session.instanceId === instance.id
-                  );
-                  
-                  return (
-                    <div
-                      key={instance.id}
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                        instance.status === 'CONNECTED' 
-                          ? 'border-green-200 bg-green-50 hover:bg-green-100'
-                          : instance.status === 'ERROR'
-                          ? 'border-red-200 bg-red-50'
-                          : 'border-gray-200 bg-gray-50'
-                      }`}
-                      onClick={() => handleSessionClick(instance)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className={`w-3 h-3 rounded-full ${
-                            instance.status === 'CONNECTED' ? 'bg-green-500' :
-                            instance.status === 'ERROR' ? 'bg-red-500' :
-                            instance.status === 'QR_CODE' ? 'bg-yellow-500' :
-                            'bg-gray-500'
-                          }`} />
-                          <div>
-                            <h3 className="font-medium">{instance.name}</h3>
-                            <p className="text-sm text-gray-600">
-                              {instance.phone || instance.phoneNumber || 'Sin número'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            instance.status === 'CONNECTED' ? 'bg-green-100 text-green-800' :
-                            instance.status === 'ERROR' ? 'bg-red-100 text-red-800' :
-                            instance.status === 'QR_CODE' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {instance.status === 'CONNECTED' ? 'Conectado' :
-                             instance.status === 'ERROR' ? 'Error' :
-                             instance.status === 'QR_CODE' ? 'Esperando QR' :
-                             instance.status}
-                          </span>
-                          {activeSession && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              {activeSession.isOnline ? '🟢 En línea' : '🔴 Fuera de línea'}
-                              {activeSession.batteryLevel && ` • ${activeSession.batteryLevel}%`}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {instance.status === 'CONNECTED' && activeSession && (
-                        <div className="mt-3 pt-3 border-t border-gray-200">
-                          <div className="grid grid-cols-3 gap-4 text-sm">
-                            <div>
-                              <span className="text-gray-500">Estado:</span>
-                              <p className="font-medium">
-                                {activeSession.isConnected ? 'Activo' : 'Inactivo'}
-                              </p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">En línea:</span>
-                              <p className="font-medium">
-                                {activeSession.isOnline ? 'Sí' : 'No'}
-                              </p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Batería:</span>
-                              <p className="font-medium">
-                                {activeSession.batteryLevel ? `${activeSession.batteryLevel}%` : 'N/A'}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div className="mt-2 text-xs text-gray-500">
-                        Actualizado: {new Date(instance.updatedAt).toLocaleString()}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Session Details Modal */}
-        {selectedSession && sessionDetails && (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle>Detalles de {selectedSession.name}</CardTitle>
-              <CardDescription>
-                Información técnica detallada de la sesión
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loadingDetails ? (
-                <div className="text-center py-4">Cargando detalles...</div>
-              ) : (
-                <div className="space-y-4">
-                  {sessionDetails.hostDevice && (
-                    <div>
-                      <h4 className="font-medium mb-2">Información del Dispositivo</h4>
-                      <div className="bg-gray-50 p-3 rounded text-sm">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>Número: {sessionDetails.hostDevice.wid?.user || 'N/A'}</div>
-                          <div>Plataforma: {sessionDetails.hostDevice.platform || 'N/A'}</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div>
-                    <h4 className="font-medium mb-2">Estado de Conexión</h4>
-                    <div className="bg-gray-50 p-3 rounded text-sm">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>Conectado: {sessionDetails.isConnected ? '✅' : '❌'}</div>
-                        <div>En línea: {sessionDetails.isOnline ? '✅' : '❌'}</div>
-                        <div>Autenticado: {sessionDetails.isAuthenticated ? '✅' : '❌'}</div>
-                        <div>Logged In: {sessionDetails.isLoggedIn ? '✅' : '❌'}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {sessionDetails.waVersion && (
-                    <div>
-                      <h4 className="font-medium mb-2">Información Técnica</h4>
-                      <div className="bg-gray-50 p-3 rounded text-sm">
-                        <div>Versión WhatsApp: {sessionDetails.waVersion}</div>
-                        <div>MultiDevice: {sessionDetails.isMultiDevice ? 'Sí' : 'No'}</div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <Button
-                    variant="outline"
-                    onClick={() => setSelectedSession(null)}
-                  >
-                    Cerrar Detalles
-                  </Button>
-                </div>
-              )}
             </CardContent>
           </Card>
         )}
-
-        {/* Mensajes Recientes */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center">
-                <Inbox className="h-5 w-5 mr-2" />
-                Mensajes Recientes
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={refreshMessages}
-                disabled={loading}
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              </Button>
-            </CardTitle>
-            <CardDescription>
-              Últimos mensajes recibidos en tus instancias de WhatsApp
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {recentMessages.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Inbox className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="font-medium text-gray-700 mb-2">
-                  Sin mensajes recientes
-                </h3>
-                <p className="text-sm">
-                  Los mensajes que recibas aparecerán aquí
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {recentMessages.slice(0, 10).map((message) => (
-                  <div
-                    key={message.id}
-                    className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-3 flex-1">
-                        <div className="flex-shrink-0">
-                          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                            <User className="h-5 w-5 text-blue-600" />
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-2">
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">
-                                {message.conversation.contactName || 'Contacto sin nombre'}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                📱 {message.conversation.contactPhone}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xs text-gray-500">
-                                {new Date(message.createdAt).toLocaleString()}
-                              </p>
-                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                {message.conversation.whatsappInstance.name}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="bg-gray-100 rounded-lg p-3">
-                            <p className="text-sm text-gray-800">
-                              {message.content}
-                            </p>
-                            {message.messageType !== 'chat' && (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-200 text-gray-700 mt-2">
-                                {message.messageType === 'image' ? '📷 Imagen' :
-                                 message.messageType === 'document' ? '📄 Documento' :
-                                 message.messageType === 'audio' ? '🎵 Audio' :
-                                 message.messageType === 'video' ? '🎥 Video' :
-                                 message.messageType}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                
-                {recentMessages.length > 10 && (
-                  <div className="text-center pt-4">
-                    <p className="text-sm text-gray-500">
-                      Mostrando los 10 mensajes más recientes de {recentMessages.length} total
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </main>
     </div>
   );
