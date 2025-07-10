@@ -300,8 +300,8 @@ router.delete('/instances/:id', async (req: TenantRequest, res) => {
     }
 
     // Disconnect if connected
-    if (instance.status === 'CONNECTED') {
-      await whatsAppService.destroySession(instance.name);
+    if (instance.status !== 'DISCONNECTED') {
+      await whatsAppService.forceDestroySession(instance.name);
     }
 
     // Delete from database
@@ -813,6 +813,68 @@ router.post('/test/create-messages', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('❌ Error creating test messages:', error);
     res.status(500).json({ error: 'Failed to create test messages' });
+  }
+});
+
+// Close all WhatsApp instances for tenant
+router.post('/instances/close-all', async (req: TenantRequest, res) => {
+  try {
+    console.log(`🛑 Closing all instances for tenant: ${req.tenant!.id}`);
+    // Get all instances for the tenant
+    const instances = await prisma.whatsappInstance.findMany({
+      where: { tenantId: req.tenant!.id },
+    });
+
+    console.log(`📊 Found ${instances.length} instances to close`);
+    // Close all active sessions
+    const closePromises = instances.map(async (instance) => {
+      try {
+        console.log(`🔌 Closing session: ${instance.name} (status: ${instance.status})`);
+        if (instance.status !== 'DISCONNECTED') {
+          await whatsAppService.forceDestroySession(instance.name);
+        }
+        // Update database status
+        await prisma.whatsappInstance.update({
+          where: { id: instance.id },
+          data: {
+            status: 'DISCONNECTED',
+            qrCode: null,
+            updatedAt: new Date(),
+          },
+        });
+        console.log(`✅ Session ${instance.name} closed successfully`);
+        return { instanceId: instance.id, name: instance.name, success: true };
+      } catch (error) {
+        console.error(`❌ Error closing session ${instance.name}:`, error);
+        return {
+          instanceId: instance.id,
+          name: instance.name,
+          success: false,
+          error: error.message,
+        };
+      }
+    });
+
+    const results = await Promise.all(closePromises);
+    const successful = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+
+    console.log(`📈 Close all results: ${successful} successful, ${failed} failed`);
+
+    res.json({
+      message: `Closed ${successful} instances successfully${
+        failed > 0 ? `, ${failed} failed` : ''
+      }`,
+      results,
+      summary: {
+        total: instances.length,
+        successful,
+        failed,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error closing all instances:', error);
+    res.status(500).json({ error: 'Failed to close all WhatsApp instances' });
   }
 });
 

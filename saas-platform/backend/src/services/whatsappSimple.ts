@@ -50,6 +50,12 @@ export class WhatsAppService {
     try {
       console.log(`Creating WhatsApp session: ${sessionName}`);
 
+      // Force cleanup any existing session with same name first
+      await this.forceDestroySession(sessionName);
+      
+      // Wait a moment for cleanup to complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       // Ensure session directory exists for multidevice support
       const sessionDir = path.join(this.tokensDir, sessionName);
       if (!fs.existsSync(sessionDir)) {
@@ -964,6 +970,64 @@ export class WhatsAppService {
     } catch (error) {
       console.error('❌ Error getting/creating chatbot:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Force destroy session - completely clean up including browser and tokens
+   */
+  async forceDestroySession(sessionName: string) {
+    try {
+      console.log(`🗑️ Force destroying session: ${sessionName}`);
+      
+      // Close browser connection
+      const client = this.connections.get(sessionName);
+      if (client) {
+        try {
+          await client.close();
+        } catch (error) {
+          console.error('Error closing client:', error);
+        }
+        this.connections.delete(sessionName);
+      }
+
+      // Clear any scheduled reconnection
+      const reconnectInterval = this.reconnectIntervals.get(sessionName);
+      if (reconnectInterval) {
+        clearTimeout(reconnectInterval);
+        this.reconnectIntervals.delete(sessionName);
+      }
+
+      // Clean up token files
+      const sessionDir = path.join(this.tokensDir, sessionName);
+      if (fs.existsSync(sessionDir)) {
+        try {
+          fs.rmSync(sessionDir, { recursive: true, force: true });
+          console.log(`🗂️ Cleaned up session directory: ${sessionDir}`);
+        } catch (error) {
+          console.error('Error cleaning session directory:', error);
+        }
+      }
+
+      // Update database
+      const instance = await prisma.whatsappInstance.findFirst({
+        where: { name: sessionName },
+      });
+
+      if (instance) {
+        await prisma.whatsappInstance.update({
+          where: { id: instance.id },
+          data: {
+            status: 'DISCONNECTED',
+            qrCode: null,
+            updatedAt: new Date(),
+          },
+        });
+      }
+
+      console.log(`✅ Session ${sessionName} force destroyed completely`);
+    } catch (error) {
+      console.error('Error force destroying session:', error);
     }
   }
 }

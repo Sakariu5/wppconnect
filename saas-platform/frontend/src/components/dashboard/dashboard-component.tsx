@@ -232,8 +232,48 @@ export function DashboardComponent() {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
       
+      // Paso 0: Verificar si ya existe una sesión con el mismo nombre y cerrarla si es necesario
+      console.log('🔍 Checking for existing sessions...');
+      setSendResult({ 
+        type: 'success', 
+        message: '🔍 Verificando sesiones existentes...' 
+      });
+
+      const existingInstances = await fetch(`${apiUrl}/api/whatsapp/instances`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      
+      if (existingInstances.ok) {
+        const instances = await existingInstances.json();
+        const existingSession = instances.find((instance: any) => 
+          instance.name === connectionForm.sessionName
+        );
+        
+        if (existingSession) {
+          console.log('🛑 Found existing session, closing it first...');
+          setSendResult({ 
+            type: 'success', 
+            message: '🛑 Cerrando sesión existente...' 
+          });
+          
+          // Cerrar la sesión existente primero
+          await fetch(`${apiUrl}/api/whatsapp/instances/${existingSession.id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          
+          // Esperar un poco para que se cierre completamente
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
+      
       // Paso 1: Crear la instancia de WhatsApp
       console.log('🔧 Creating WhatsApp instance...');
+      setSendResult({ 
+        type: 'success', 
+        message: '🔧 Creando nueva instancia...' 
+      });
+      
       const createInstanceUrl = `${apiUrl}/api/whatsapp/instances`;
       
       const createResponse = await fetch(createInstanceUrl, {
@@ -258,6 +298,11 @@ export function DashboardComponent() {
 
       // Paso 2: Conectar la instancia (esto genera el QR)
       console.log('🔌 Connecting WhatsApp instance...');
+      setSendResult({ 
+        type: 'success', 
+        message: '🔌 Iniciando conexión y generando QR...' 
+      });
+      
       const connectUrl = `${apiUrl}/api/whatsapp/instances/${instanceId}/connect`;
       
       const connectResponse = await fetch(connectUrl, {
@@ -273,7 +318,7 @@ export function DashboardComponent() {
       if (connectResponse.ok) {
         setSendResult({ 
           type: 'success', 
-          message: '✅ Conexión iniciada. El código QR se generará automáticamente.' 
+          message: '✅ Conexión iniciada. El código QR se generará en unos segundos...' 
         });
         
         // Habilitar la visualización del QR
@@ -282,15 +327,20 @@ export function DashboardComponent() {
         // Ocultar el formulario después de un tiempo para que el QR sea más visible
         setTimeout(() => {
           setShowConnectionForm(false);
-        }, 1000);
+        }, 2000);
         
         // Refresh instances after successful connection start
         setTimeout(() => {
           refreshInstances();
-        }, 2000);
+        }, 3000);
 
-        // Nota: El QR se mostrará a través del sistema de WebSocket/polling existente
-        // No necesitamos setQrData aquí ya que el QR viene del recentActivity
+        // Mensaje adicional después de unos segundos
+        setTimeout(() => {
+          setSendResult({ 
+            type: 'success', 
+            message: '📱 Esperando código QR... Si no aparece en 30 segundos, intenta cerrar todas las instancias y vuelve a intentar.' 
+          });
+        }, 5000);
       } else {
         throw new Error(`Error connecting instance: ${connectData.error || connectData.details || 'Error desconocido'}`);
       }
@@ -310,6 +360,54 @@ export function DashboardComponent() {
     setConnectionForm({ whatsappNumber: '', sessionName: '' });
     setSendResult(null);
     setShowQRFromForm(false);
+  };
+
+  const handleCloseAllInstances = async () => {
+    if (!confirm('¿Estás seguro de que quieres cerrar todas las instancias de WhatsApp? Esto desconectará todos los números conectados.')) {
+      return;
+    }
+
+    setGeneratingQR(true);
+    setSendResult(null);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const url = `${apiUrl}/api/whatsapp/instances/close-all`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setSendResult({ 
+          type: 'success', 
+          message: `✅ ${data.message}` 
+        });
+        
+        // Refresh instances after closing all
+        setTimeout(() => {
+          refreshInstances();
+        }, 2000);
+      } else {
+        setSendResult({ 
+          type: 'error', 
+          message: `❌ Error: ${data.error || 'Error desconocido'}` 
+        });
+      }
+    } catch (error: any) {
+      setSendResult({ 
+        type: 'error', 
+        message: `❌ Error de conexión: ${error.message}` 
+      });
+    } finally {
+      setGeneratingQR(false);
+    }
   };
 
   return (
@@ -352,6 +450,44 @@ export function DashboardComponent() {
 
       {/* Main Content */}
       <main className="p-6 max-w-7xl mx-auto">
+        {/* Botones de control global */}
+        {connectedInstances.length > 0 && (
+          <div className="mb-6">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">
+                      Control de Instancias
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {connectedInstances.length} instancia{connectedInstances.length !== 1 ? 's' : ''} conectada{connectedInstances.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <Button 
+                    variant="destructive"
+                    onClick={handleCloseAllInstances}
+                    disabled={generatingQR}
+                    size="sm"
+                  >
+                    {generatingQR ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Cerrando...
+                      </>
+                    ) : (
+                      <>
+                        <LogOut className="h-4 w-4 mr-2" />
+                        Cerrar Todas las Instancias
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Columna Izquierda */}
           <div className="space-y-6">
@@ -712,28 +848,6 @@ export function DashboardComponent() {
             </Card>
           </div>
         </div>
-
-        {/* Información de estado si no hay conexiones */}
-        {connectedInstances.length === 0 && (
-          <Card className="mt-8">
-            <CardContent className="text-center py-8">
-              <Phone className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-medium text-gray-900 mb-2">
-                Sin conexiones de WhatsApp
-              </h3>
-              <p className="text-gray-600 mb-6">
-                Para empezar a enviar mensajes, necesitas conectar tu primer número de WhatsApp
-              </p>
-              <Button 
-                onClick={handleConnectWhatsApp}
-                size="lg"
-              >
-                <Plus className="h-5 w-5 mr-2" />
-                Conectar WhatsApp
-              </Button>
-            </CardContent>
-          </Card>
-        )}
       </main>
     </div>
   );
