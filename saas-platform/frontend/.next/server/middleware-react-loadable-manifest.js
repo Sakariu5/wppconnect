@@ -1,1 +1,0 @@
-self.__REACT_LOADABLE_MANIFEST="{\"stores\\\\websocket.tsx -> socket.io-client\":{\"id\":\"stores\\\\websocket.tsx -> socket.io-client\",\"files\":[\"static/chunks/_app-pages-browser_node_modules_socket_io-client_build_esm_index_js.js\"]}}"

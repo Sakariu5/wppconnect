@@ -1,2 +1,56 @@
+# Build outputs
 docs
 dist
+build
+out
+.next
+
+# Dependencies
+node_modules
+
+# Generated files
+*.min.js
+*.min.css
+*.bundle.js
+*.pack.gz
+*.pack.gz.old
+
+# Assets
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# Logs
+*.log
+
+# Environment files
+.env*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# IDE files
+.vscode
+.idea
+
+# TypeScript declaration files that are auto-generated
+next-env.d.ts
+
+# Webpack and build artifacts
+webpack.*
+layout.*
+page.*

@@ -1,0 +1,78 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+
+# Generated files
+*.min.js
+*.bundle.js
+*.pack.gz
+*.pack.gz.old
+
+# TypeScript declaration files
+*.d.ts
+next-env.d.ts
+
+# Webpack generated
+webpack.*
+layout.*
+page.*
+
+# Assets
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env*
+
+# Coverage
+coverage/
+
+# Cache directories
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+
+# Temporary directories
+tmp/
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Tokens and sessions (for WhatsApp)
+tokens/
+session/
+session-*
+
+# Prisma migrations
+prisma/migrations/
+
+# Documentation
+docs/
