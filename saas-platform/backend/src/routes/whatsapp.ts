@@ -276,7 +276,7 @@ router.post('/instances/:id/send-message', async (req: TenantRequest, res) => {
       to: req.body.to,
       message: req.body.message?.substring(0, 50) + '...',
     });
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to send message',
       details: error.message,
     });
@@ -499,7 +499,6 @@ router.get('/instances/:id/ready', async (req: TenantRequest, res) => {
     }
 
     const isReady = await whatsAppService.isSessionReady(instance.name);
-    
     res.json({
       instanceId: id,
       sessionName: instance.name,
@@ -562,7 +561,6 @@ router.get('/instances/debug', async (req: TenantRequest, res) => {
     });
 
     console.log('🔍 DEBUG: All instances in database:', allInstances.length);
-    
     res.json({
       success: true,
       currentTenant: req.tenant?.id,
@@ -601,7 +599,6 @@ router.get('/messages/debug', async (req: TenantRequest, res) => {
     });
 
     console.log('🔍 DEBUG: Found messages in database:', allMessages.length);
-    
     res.json({
       success: true,
       totalMessages: allMessages.length,
@@ -629,9 +626,7 @@ router.get('/messages/debug', async (req: TenantRequest, res) => {
 router.get('/messages/recent', async (req: TenantRequest, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 20;
-    
     console.log('🔍 Recent messages request for tenant:', req.tenant?.id);
-    
     // Get all WhatsApp instances for the tenant
     const instances = await prisma.whatsappInstance.findMany({
       where: { tenantId: req.tenant?.id },
@@ -677,7 +672,6 @@ router.get('/messages/recent', async (req: TenantRequest, res) => {
       messages: recentMessages,
       total: recentMessages.length,
     });
-    
     console.log(
       `📤 Returning ${recentMessages.length} recent messages to frontend`
     );
@@ -741,7 +735,6 @@ router.get('/instances/:id/messages', async (req: TenantRequest, res) => {
 router.post('/test/create-messages', async (req: TenantRequest, res) => {
   try {
     console.log('🧪 Creating test messages...');
-    
     // Find first instance for this tenant
     const instance = await prisma.whatsappInstance.findFirst({
       where: { tenantId: req.tenant?.id },
