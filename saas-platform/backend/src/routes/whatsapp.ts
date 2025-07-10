@@ -519,17 +519,19 @@ router.get('/sessions/active', async (req: TenantRequest, res) => {
     // Filter sessions for this tenant
     const tenantInstances = await prisma.whatsappInstance.findMany({
       where: { tenantId: req.tenant?.id },
-      select: { name: true, id: true, phone: true, status: true }
+      select: { name: true, id: true, phone: true, status: true },
     });
 
     const tenantSessionNames = tenantInstances.map((i) => i.name);
-    const filteredSessions = activeSessions.filter((session) => 
+    const filteredSessions = activeSessions.filter((session) =>
       tenantSessionNames.includes(session.sessionName)
     );
 
     // Merge with database information
     const enrichedSessions = filteredSessions.map((session) => {
-      const dbInstance = tenantInstances.find(i => i.name === session.sessionName);
+      const dbInstance = tenantInstances.find(
+        (i) => i.name === session.sessionName
+      );
       return {
         ...session,
         instanceId: dbInstance?.id,

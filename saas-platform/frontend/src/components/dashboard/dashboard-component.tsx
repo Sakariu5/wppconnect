@@ -17,7 +17,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWhatsApp } from '@/hooks/useWhatsApp';
@@ -42,7 +41,6 @@ import {
 export function DashboardComponent() {
   const { user, tenant, logout, token } = useAuth();
   const { connectedInstances, recentActivity, recentMessages, loading, refreshInstances, refreshMessages } = useWhatsApp();
-  const router = useRouter();
   
   // Estados para envío de mensajes
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('');
@@ -53,6 +51,18 @@ export function DashboardComponent() {
   
   // Estados para mensajes filtrados por sesión
   const [filteredMessages, setFilteredMessages] = useState(recentMessages);
+  
+  // Estados para el formulario de conexión de WhatsApp
+  const [showConnectionForm, setShowConnectionForm] = useState(false);
+  const [connectionForm, setConnectionForm] = useState<{
+    whatsappNumber: string;
+    sessionName: string;
+  }>({
+    whatsappNumber: '',
+    sessionName: ''
+  });
+  const [generatingQR, setGeneratingQR] = useState(false);
+  const [showQRFromForm, setShowQRFromForm] = useState(false);
 
   // Filtrar mensajes cuando cambie la sesión seleccionada o los mensajes
   useEffect(() => {
@@ -77,7 +87,8 @@ export function DashboardComponent() {
   };
 
   const handleConnectWhatsApp = () => {
-    router.push('/dashboard/whatsapp/connect');
+    setShowConnectionForm(true);
+    setShowQRFromForm(false); // Reset QR display state
   };
 
   // Función mejorada para limpiar y validar números
@@ -209,6 +220,98 @@ export function DashboardComponent() {
     }
   };
 
+  const handleGenerateQR = async () => {
+    if (!connectionForm.whatsappNumber || !connectionForm.sessionName) {
+      setSendResult({ type: 'error', message: 'Por favor completa todos los campos' });
+      return;
+    }
+
+    setGeneratingQR(true);
+    setSendResult(null);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      
+      // Paso 1: Crear la instancia de WhatsApp
+      console.log('🔧 Creating WhatsApp instance...');
+      const createInstanceUrl = `${apiUrl}/api/whatsapp/instances`;
+      
+      const createResponse = await fetch(createInstanceUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionName: connectionForm.sessionName,
+        }),
+      });
+
+      const createData = await createResponse.json();
+
+      if (!createResponse.ok) {
+        throw new Error(`Error creating instance: ${createData.error || createData.details || 'Error desconocido'}`);
+      }
+
+      console.log('✅ Instance created:', createData);
+      const instanceId = createData.id;
+
+      // Paso 2: Conectar la instancia (esto genera el QR)
+      console.log('🔌 Connecting WhatsApp instance...');
+      const connectUrl = `${apiUrl}/api/whatsapp/instances/${instanceId}/connect`;
+      
+      const connectResponse = await fetch(connectUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const connectData = await connectResponse.json();
+
+      if (connectResponse.ok) {
+        setSendResult({ 
+          type: 'success', 
+          message: '✅ Conexión iniciada. El código QR se generará automáticamente.' 
+        });
+        
+        // Habilitar la visualización del QR
+        setShowQRFromForm(true);
+        
+        // Ocultar el formulario después de un tiempo para que el QR sea más visible
+        setTimeout(() => {
+          setShowConnectionForm(false);
+        }, 1000);
+        
+        // Refresh instances after successful connection start
+        setTimeout(() => {
+          refreshInstances();
+        }, 2000);
+
+        // Nota: El QR se mostrará a través del sistema de WebSocket/polling existente
+        // No necesitamos setQrData aquí ya que el QR viene del recentActivity
+      } else {
+        throw new Error(`Error connecting instance: ${connectData.error || connectData.details || 'Error desconocido'}`);
+      }
+    } catch (error: any) {
+      console.error('❌ Generate QR error:', error);
+      setSendResult({ 
+        type: 'error', 
+        message: `❌ ${error.message}` 
+      });
+    } finally {
+      setGeneratingQR(false);
+    }
+  };
+
+  const handleCancelConnection = () => {
+    setShowConnectionForm(false);
+    setConnectionForm({ whatsappNumber: '', sessionName: '' });
+    setSendResult(null);
+    setShowQRFromForm(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -252,7 +355,7 @@ export function DashboardComponent() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Columna Izquierda */}
           <div className="space-y-6">
-            {/* Botón Conectar WhatsApp */}
+            {/* Botón Conectar WhatsApp / Formulario de Conexión */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -261,19 +364,99 @@ export function DashboardComponent() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Button 
-                  className="w-full" 
-                  onClick={handleConnectWhatsApp}
-                  size="lg"
-                >
-                  <Plus className="h-5 w-5 mr-2" />
-                  Conectar Número de WhatsApp
-                </Button>
+                {!showConnectionForm ? (
+                  <Button 
+                    className="w-full" 
+                    onClick={handleConnectWhatsApp}
+                    size="lg"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    Conectar Número de WhatsApp
+                  </Button>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-600 mb-4">
+                      Proporciona los detalles de tu número de WhatsApp
+                    </p>
+                    
+                    {/* Número de WhatsApp */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Número de WhatsApp
+                      </label>
+                      <input
+                        type="text"
+                        value={connectionForm.whatsappNumber}
+                        onChange={(e) => setConnectionForm({
+                          ...connectionForm,
+                          whatsappNumber: e.target.value 
+                        })}
+                        placeholder="+1234567890"
+                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Incluye el código de país (ej: +52 para México)
+                      </p>
+                    </div>
+
+                    {/* Nombre de la Sesión */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Nombre de la Sesión
+                      </label>
+                      <input
+                        type="text"
+                        value={connectionForm.sessionName}
+                        onChange={(e) => setConnectionForm({
+                          ...connectionForm,
+                          sessionName: e.target.value 
+                        })}
+                        placeholder="Mi WhatsApp Business"
+                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Un nombre descriptivo para identificar esta conexión
+                      </p>
+                    </div>
+
+                    {/* Resultado */}
+                    {sendResult && (
+                      <div className={`p-3 rounded-md ${
+                        sendResult.type === 'success' 
+                          ? 'bg-green-50 border border-green-200 text-green-800'
+                          : 'bg-red-50 border border-red-200 text-red-800'
+                      }`}>
+                        {sendResult.message}
+                      </div>
+                    )}
+
+                    {/* Botones */}
+                    <div className="flex space-x-3">
+                      <Button
+                        onClick={handleGenerateQR}
+                        disabled={generatingQR || !connectionForm.whatsappNumber || !connectionForm.sessionName}
+                        className="flex-1"
+                        size="lg"
+                      >
+                        <QrCode className={`h-4 w-4 mr-2 ${generatingQR ? 'animate-pulse' : ''}`} />
+                        {generatingQR ? 'Generando...' : 'Generar Código QR'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleCancelConnection}
+                        disabled={generatingQR}
+                        size="lg"
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* Mostrar QR si existe */}
-            {recentActivity?.latestQr && (
+            {/* Mostrar QR cuando se haya generado desde nuestro formulario */}
+            {showQRFromForm && recentActivity?.latestQr && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center">
@@ -296,9 +479,22 @@ export function DashboardComponent() {
                   <p className="text-sm text-gray-600 mb-2">
                     Sesión: <span className="font-medium">{recentActivity.latestQr.sessionName}</span>
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 mb-4">
                     Generado: {new Date(recentActivity.latestQr.timestamp).toLocaleString()}
                   </p>
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <p className="text-sm text-blue-800">
+                      📱 Escanea este código con tu WhatsApp para conectar tu número
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleCancelConnection}
+                    className="mt-4"
+                    size="sm"
+                  >
+                    Cancelar Conexión
+                  </Button>
                 </CardContent>
               </Card>
             )}
