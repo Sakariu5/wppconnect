@@ -318,32 +318,6 @@ function ConnectWhatsAppContent() {
                 
                 {/* Debug section */}
                 <div className="mt-4 pt-4 border-t border-gray-200">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="w-full"
-                    onClick={() => {
-                      console.log('Debug: Attempting navigation to dashboard');
-                      try {
-                        router.push('/dashboard');
-                      } catch (error) {
-                        console.error('Debug: Router navigation failed:', error);
-                        window.location.href = '/dashboard';
-                      }
-                    }}
-                  >
-                    🔧 Debug: Volver al Dashboard
-                  </Button>
-                  
-                  {/* Add debug info */}
-                  <div className="mt-2 p-2 bg-gray-100 rounded text-xs">
-                    <strong>Debug Info:</strong><br/>
-                    Step: {step}<br/>
-                    Instance ID: {instanceId}<br/>
-                    Connection Status: {connectionStatus}<br/>
-                    QR Code: {qrCode ? 'Present' : 'None'}<br/>
-                    Time Remaining: {timeRemaining}s
-                  </div>
                   
                   {instanceId && (
                     <Button

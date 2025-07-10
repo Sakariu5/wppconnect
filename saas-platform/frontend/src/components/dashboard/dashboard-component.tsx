@@ -501,14 +501,18 @@ export function DashboardComponent() {
               </CardHeader>
               <CardContent>
                 {!showConnectionForm ? (
-                  <Button 
-                    className="w-full" 
-                    onClick={handleConnectWhatsApp}
-                    size="lg"
+                  <a
+                    href="http://localhost:3000/dashboard/whatsapp/connect"
+                    className="w-full inline-block"
                   >
-                    <Plus className="h-5 w-5 mr-2" />
-                    Conectar Número de WhatsApp
-                  </Button>
+                    <Button 
+                      className="w-full" 
+                      size="lg"
+                    >
+                      <Plus className="h-5 w-5 mr-2" />
+                      Conectar Número de WhatsApp
+                    </Button>
+                  </a>
                 ) : (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600 mb-4">
