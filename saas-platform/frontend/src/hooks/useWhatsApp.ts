@@ -77,9 +77,28 @@ export interface RateLimitInfo {
   nextRetryTime: Date | null;
 }
 
+export interface RecentMessage {
+  id: string;
+  content: string;
+  messageType: string;
+  isFromBot: boolean;
+  createdAt: string;
+  conversation: {
+    id: string;
+    contactName?: string;
+    contactPhone: string;
+    whatsappInstance: {
+      id: string;
+      name: string;
+      phone?: string;
+    };
+  };
+}
+
 export interface UseWhatsAppReturn {
   instances: WhatsAppInstance[];
   activeSessions: ActiveSession[];
+  recentMessages: RecentMessage[];
   loading: boolean;
   error: string | null;
   connectedInstances: WhatsAppInstance[];
@@ -87,6 +106,7 @@ export interface UseWhatsAppReturn {
   recentActivity: RecentActivity | null;
   rateLimitInfo: RateLimitInfo;
   refreshInstances: () => Promise<void>;
+  refreshMessages: () => Promise<void>;
   getSessionInfo: (instanceId: string) => Promise<SessionInfo | null>;
   checkSessionReady: (instanceId: string) => Promise<boolean>;
 }
@@ -95,6 +115,7 @@ export function useWhatsApp(): UseWhatsAppReturn {
   const { token } = useAuth();
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  const [recentMessages, setRecentMessages] = useState<RecentMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [recentActivity, setRecentActivity] = useState<RecentActivity | null>({
@@ -261,6 +282,48 @@ export function useWhatsApp(): UseWhatsAppReturn {
     }
   }, [token]);
 
+  const fetchRecentMessages = useCallback(async () => {
+    if (!token) return;
+
+    try {
+      console.log('🔄 Fetching recent messages...');
+      
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const url = `${apiUrl}/api/whatsapp/messages/recent?limit=20&_t=${Date.now()}`;
+      console.log('📍 Recent messages URL:', url);
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('💬 Recent messages response:', data);
+        console.log('💬 Messages array:', data.messages);
+        console.log('💬 Number of messages received:', data.messages?.length || 0);
+        setRecentMessages(data.messages || []);
+      } else if (response.status === 429) {
+        console.warn('⚠️ Rate limited for recent messages, skipping this fetch cycle');
+      } else {
+        console.error('❌ Failed to fetch recent messages:', response.status, response.statusText);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching recent messages:', err);
+    }
+  }, [token]);
+
+  const refreshInstances = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([fetchInstances(), fetchActiveSessions(), fetchRecentMessages()]);
+  }, [fetchInstances, fetchActiveSessions, fetchRecentMessages]);
+
+  const refreshMessages = useCallback(async () => {
+    await fetchRecentMessages();
+  }, [fetchRecentMessages]);
+
   const getSessionInfo = useCallback(async (instanceId: string): Promise<SessionInfo | null> => {
     if (!token) return null;
 
@@ -315,15 +378,11 @@ export function useWhatsApp(): UseWhatsAppReturn {
     }
   }, [token]);
 
-  const refreshInstances = useCallback(async () => {
-    setLoading(true);
-    await Promise.all([fetchInstances(), fetchActiveSessions()]);
-  }, [fetchInstances, fetchActiveSessions]);
-
   useEffect(() => {
     fetchInstances();
     fetchActiveSessions();
-  }, [fetchInstances, fetchActiveSessions]);
+    fetchRecentMessages();
+  }, [fetchInstances, fetchActiveSessions, fetchRecentMessages]);
 
   // Auto-refresh when page gains focus
   useEffect(() => {
@@ -354,6 +413,7 @@ export function useWhatsApp(): UseWhatsAppReturn {
   return {
     instances,
     activeSessions,
+    recentMessages,
     loading,
     error,
     connectedInstances,
@@ -361,6 +421,7 @@ export function useWhatsApp(): UseWhatsAppReturn {
     recentActivity,
     rateLimitInfo,
     refreshInstances,
+    refreshMessages,
     getSessionInfo,
     checkSessionReady,
   };

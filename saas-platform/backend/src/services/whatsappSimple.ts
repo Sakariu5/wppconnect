@@ -3,29 +3,8 @@
  *
  * WPPConnect is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License,      // Format number for WhatsApp Web
-      let formattedTo = to.replace(/\D/g, ''); // Remove non-digits
-      
-      console.log(`🔧 Number formatting:`, {
-        original: to,
-        cleaned: formattedTo,
-        hasAtSymbol: to.includes('@'),
-        isValidLength: formattedTo.length >= 10 && formattedTo.length <= 15,
-      });
-      
-      // Validate number length
-      if (formattedTo.length < 10 || formattedTo.length > 15) {
-        throw new Error(`Invalid phone number length: ${formattedTo.length} digits. Expected 10-15 digits.`);
-      }
-      
-      // Add @c.us suffix if not present
-      if (!formattedTo.includes('@')) {
-        formattedTo = `${formattedTo}@c.us`;
-      }
-      
-      console.log(
-        `📤 Sending ${type} message from ${sessionName} to ${formattedTo}: "${message}"`
-      );ption) any later version.
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * WPPConnect is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -35,6 +14,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with WPPConnect.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 import { create, Whatsapp, defaultLogger } from '@wppconnect-team/wppconnect';
 import { PrismaClient } from '@prisma/client';
 import { WebSocketService } from './websocket';
@@ -506,39 +486,90 @@ export class WhatsAppService {
     tenantId: string
   ) {
     try {
-      console.log('Received message:', {
+      console.log('🚨 REAL MESSAGE RECEIVED:', {
+        messageId: message.id,
         from: message.from,
         type: message.type,
         body: message.body,
         session: sessionName,
+        tenantId,
+        timestamp: new Date().toISOString(),
       });
 
-      // Store message in database
-      const instance = await prisma.whatsappInstance.findFirst({
+      // Store message in database - try multiple strategies
+      let instance = await prisma.whatsappInstance.findFirst({
         where: { name: sessionName, tenantId },
       });
 
+      console.log('🔍 Instance lookup result (with tenantId):', {
+        sessionName,
+        tenantId,
+        instanceFound: !!instance,
+        instanceId: instance?.id,
+      });
+
+      // If not found with tenantId, try without tenantId (fallback)
+      if (!instance) {
+        console.log('🔍 Trying fallback search without tenantId...');
+        instance = await prisma.whatsappInstance.findFirst({
+          where: { name: sessionName },
+        });
+
+        console.log('� Fallback instance lookup result:', {
+          sessionName,
+          instanceFound: !!instance,
+          instanceId: instance?.id,
+          actualTenantId: instance?.tenantId,
+        });
+      }
+
       if (instance) {
-        // You can add logic here to store conversations and process bot responses
-        // For now, just log the message
-        console.log(`Message processed for session ${sessionName}`);
+        console.log('�💾 About to store message for instance:', instance.id);
+        
+        // Store message in database using the actual tenantId from the instance
+        await this.storeMessage(message, instance.id, instance.tenantId);
+        
+        console.log(
+          `✅ Message processing completed for session ${sessionName}`
+        );
+        
         // Emit message via WebSocket
         if (this.webSocketService) {
-          this.webSocketService.emitToTenant(tenantId, 'new-whatsapp-message', {
-            instanceId: sessionName,
-            message: {
-              id: message.id,
-              from: message.from,
-              to: message.to,
-              body: message.body,
-              type: message.type,
-              timestamp: message.timestamp || new Date(),
-            },
-          });
+          this.webSocketService.emitToTenant(
+            instance.tenantId,
+            'new-whatsapp-message',
+            {
+              instanceId: sessionName,
+              message: {
+                id: message.id,
+                from: message.from,
+                to: message.to,
+                body: message.body,
+                type: message.type,
+                timestamp: message.timestamp || new Date(),
+              },
+            }
+          );
+          console.log('📡 Message emitted via WebSocket');
+        } else {
+          console.log('⚠️ WebSocket service not available');
         }
+      } else {
+        console.log(
+          '❌ No instance found for sessionName:',
+          sessionName,
+          'tenantId:',
+          tenantId
+        );
+        
+        // List all instances for debugging
+        const allInstances = await prisma.whatsappInstance.findMany({
+          select: { id: true, name: true, tenantId: true },
+        });
+        console.log('📋 All available instances:', allInstances);
       }
     } catch (error) {
-      console.error('Error handling incoming message:', error);
+      console.error('❌ Error handling incoming message:', error);
     }
   }
 
@@ -771,14 +802,16 @@ export class WhatsAppService {
   /**
    * Get session information for all active sessions
    */
-  async getAllSessionsInfo(): Promise<Array<{
-    sessionName: string;
-    isConnected: boolean;
-    isOnline: boolean;
-    phoneNumber: string | null;
-    batteryLevel: number | null;
-    connectionState: any;
-  }>> {
+  async getAllSessionsInfo(): Promise<
+    Array<{
+      sessionName: string;
+      isConnected: boolean;
+      isOnline: boolean;
+      phoneNumber: string | null;
+      batteryLevel: number | null;
+      connectionState: any;
+    }>
+  > {
     const sessions = [];
     
     for (const [sessionName, client] of this.connections) {
@@ -806,5 +839,125 @@ export class WhatsAppService {
     }
     
     return sessions;
+  }
+
+  /**
+   * Store incoming message in database
+   */
+  private async storeMessage(
+    message: any,
+    instanceId: string,
+    tenantId: string
+  ): Promise<void> {
+    try {
+      console.log('🗄️ Storing message in database:', {
+        messageId: message.id,
+        from: message.from,
+        body: message.body,
+        instanceId,
+        tenantId,
+      });
+
+      // Extract phone number (remove group suffix if exists)
+      const fromPhone = message.from.includes('@g.us')
+        ? message.from
+        : message.from.replace('@c.us', '');
+
+      console.log('📞 Processed phone number:', fromPhone);
+      
+      // Find or create conversation
+      let conversation = await prisma.conversation.findFirst({
+        where: {
+          contactPhone: fromPhone,
+          whatsappInstanceId: instanceId,
+        },
+      });
+
+      console.log(
+        '💬 Found existing conversation:',
+        conversation?.id || 'None'
+      );
+
+      if (!conversation) {
+        console.log('🆕 Creating new conversation for:', fromPhone);
+        // Create a new conversation
+        conversation = await prisma.conversation.create({
+          data: {
+            contactPhone: fromPhone,
+            contactName: message.notifyName || message.pushname || null,
+            whatsappInstanceId: instanceId,
+            // We need a chatbot to associate, for now use null or find one
+            chatbotId: await this.getDefaultChatbotId(instanceId, tenantId),
+            status: 'ACTIVE',
+          },
+        });
+        console.log('✅ Created new conversation:', conversation.id);
+      }
+
+      // Store the message
+      const newMessage = await prisma.message.create({
+        data: {
+          content: message.body || message.caption || '[Media]',
+          messageType: message.type || 'chat',
+          isFromBot: false,
+          conversationId: conversation.id,
+          metadata: JSON.stringify({
+            originalMessageId: message.id,
+            from: message.from,
+            timestamp: message.timestamp,
+            isGroupMessage: message.from.includes('@g.us'),
+            hasMedia: !!message.hasMedia,
+          }),
+        },
+      });
+
+      console.log(
+        `✅ Message stored in database - ID: ${newMessage.id}, Content: "${newMessage.content}"`
+      );
+    } catch (error) {
+      console.error('❌ Error storing message in database:', error);
+    }
+  }
+
+  /**
+   * Get default chatbot for instance or create one
+   */
+  private async getDefaultChatbotId(
+    instanceId: string,
+    tenantId: string
+  ): Promise<string> {
+    try {
+      // Try to find existing chatbot for this instance
+      let chatbot = await prisma.chatbot.findFirst({
+        where: {
+          whatsappInstanceId: instanceId,
+          tenantId,
+        },
+      });
+
+      if (!chatbot) {
+        // Create a default chatbot
+        const instance = await prisma.whatsappInstance.findUnique({
+          where: { id: instanceId },
+        });
+
+        chatbot = await prisma.chatbot.create({
+          data: {
+            name: `Bot ${instance?.name || 'Default'}`,
+            description: 'Chatbot creado automáticamente',
+            tenantId,
+            whatsappInstanceId: instanceId,
+            welcomeMessage: 'Hola! ¿En qué puedo ayudarte?',
+          },
+        });
+
+        console.log(`🤖 Created default chatbot for instance ${instanceId}`);
+      }
+
+      return chatbot.id;
+    } catch (error) {
+      console.error('❌ Error getting/creating chatbot:', error);
+      throw error;
+    }
   }
 }

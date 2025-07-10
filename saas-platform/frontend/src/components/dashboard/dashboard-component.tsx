@@ -40,11 +40,14 @@ import {
   Clock,
   QrCode,
   Send,
+  Inbox,
+  User,
+  RefreshCw,
 } from 'lucide-react';
 
 export function DashboardComponent() {
   const { user, tenant, logout, token } = useAuth();
-  const { instances, connectedInstances, activeSessions, hasConnectedInstances, loading, recentActivity, rateLimitInfo, refreshInstances, getSessionInfo } = useWhatsApp();
+  const { instances, connectedInstances, activeSessions, hasConnectedInstances, loading, recentActivity, recentMessages, rateLimitInfo, refreshInstances, refreshMessages, getSessionInfo } = useWhatsApp();
   const router = useRouter();
   const [selectedSession, setSelectedSession] = useState<any>(null);
   const [sessionDetails, setSessionDetails] = useState<any>(null);
@@ -63,7 +66,8 @@ export function DashboardComponent() {
     console.log('📱 Dashboard instances:', instances);
     console.log('🟢 Connected instances:', connectedInstances);
     console.log('⚡ Active sessions:', activeSessions);
-  }, [recentActivity, instances, connectedInstances, activeSessions]);
+    console.log('💬 Recent messages:', recentMessages);
+  }, [recentActivity, instances, connectedInstances, activeSessions, recentMessages]);
 
   // Refresh automático al cargar el componente
   useEffect(() => {
@@ -407,6 +411,7 @@ export function DashboardComponent() {
                   <div>Total instancias: {instances.length}</div>
                   <div>Instancias conectadas: {connectedInstances.length}</div>
                   <div>Sesiones activas: {activeSessions.length}</div>
+                  <div>Mensajes recientes: {recentMessages.length}</div>
                   <div>¿Tiene QR reciente?: {recentActivity?.latestQr ? 'Sí' : 'No'}</div>
                   <div>¿Tiene conexión reciente?: {recentActivity?.latestConnection ? 'Sí' : 'No'}</div>
                   {instances.length > 0 && (
@@ -415,6 +420,16 @@ export function DashboardComponent() {
                       {instances.map((inst, i) => (
                         <div key={i} className="ml-2 text-xs">
                           {i + 1}. {inst.name} - {inst.status} - QR: {inst.qrCode ? 'Sí' : 'No'}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {recentMessages.length > 0 && (
+                    <div className="mt-2">
+                      <div className="font-medium">Mensajes recientes encontrados:</div>
+                      {recentMessages.slice(0, 3).map((msg, i) => (
+                        <div key={i} className="ml-2 text-xs">
+                          {i + 1}. De: {msg.conversation.contactPhone} - {msg.content.substring(0, 50)}...
                         </div>
                       ))}
                     </div>
@@ -921,6 +936,103 @@ export function DashboardComponent() {
             </CardContent>
           </Card>
         )}
+
+        {/* Mensajes Recientes */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center">
+                <Inbox className="h-5 w-5 mr-2" />
+                Mensajes Recientes
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refreshMessages}
+                disabled={loading}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </CardTitle>
+            <CardDescription>
+              Últimos mensajes recibidos en tus instancias de WhatsApp
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recentMessages.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Inbox className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="font-medium text-gray-700 mb-2">
+                  Sin mensajes recientes
+                </h3>
+                <p className="text-sm">
+                  Los mensajes que recibas aparecerán aquí
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {recentMessages.slice(0, 10).map((message) => (
+                  <div
+                    key={message.id}
+                    className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-3 flex-1">
+                        <div className="flex-shrink-0">
+                          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                            <User className="h-5 w-5 text-blue-600" />
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">
+                                {message.conversation.contactName || 'Contacto sin nombre'}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                📱 {message.conversation.contactPhone}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-gray-500">
+                                {new Date(message.createdAt).toLocaleString()}
+                              </p>
+                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                {message.conversation.whatsappInstance.name}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="bg-gray-100 rounded-lg p-3">
+                            <p className="text-sm text-gray-800">
+                              {message.content}
+                            </p>
+                            {message.messageType !== 'chat' && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-200 text-gray-700 mt-2">
+                                {message.messageType === 'image' ? '📷 Imagen' :
+                                 message.messageType === 'document' ? '📄 Documento' :
+                                 message.messageType === 'audio' ? '🎵 Audio' :
+                                 message.messageType === 'video' ? '🎥 Video' :
+                                 message.messageType}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+                {recentMessages.length > 10 && (
+                  <div className="text-center pt-4">
+                    <p className="text-sm text-gray-500">
+                      Mostrando los 10 mensajes más recientes de {recentMessages.length} total
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   );
