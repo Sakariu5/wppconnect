@@ -92,7 +92,6 @@ router.post('/instances/:id/connect', async (req: TenantRequest, res) => {
     }
 
     console.log(`✅ Found instance: ${instance.name}, starting session...`);
-    
     // Start WhatsApp session
     await whatsAppService.createSession(
       instance.name,
@@ -101,7 +100,6 @@ router.post('/instances/:id/connect', async (req: TenantRequest, res) => {
     );
 
     console.log(`🚀 Session creation initiated for: ${instance.name}`);
-    
     res.json({
       message: 'Connection started',
       sessionName: instance.name,
@@ -158,7 +156,6 @@ router.get('/instances/:id/qr', async (req: TenantRequest, res) => {
     console.log(
       `📊 Instance status: ${instance.status}, QR exists: ${!!instance.qrCode}`
     );
-    
     res.json({
       qrCode: instance.qrCode,
       status: instance.status,
@@ -182,11 +179,14 @@ router.post('/instances/:id/send-message', async (req: TenantRequest, res) => {
       toLength: to?.length,
       message: message?.substring(0, 50) + '...',
       type,
-      tenantId: req.tenant?.id
+      tenantId: req.tenant?.id,
     });
 
     if (!to || !message) {
-      console.log('❌ Missing required fields:', { to: !!to, message: !!message });
+      console.log('❌ Missing required fields:', {
+        to: !!to,
+        message: !!message,
+      });
       return res
         .status(400)
         .json({ error: 'Recipient and message are required' });
@@ -212,16 +212,18 @@ router.post('/instances/:id/send-message', async (req: TenantRequest, res) => {
 
     if (instance.status !== 'CONNECTED') {
       console.log(`❌ Instance not connected:`, { status: instance.status });
-      return res
-        .status(400)
-        .json({ error: `WhatsApp instance is not connected (status: ${instance.status})` });
+      return res.status(400).json({
+        error: `WhatsApp instance is not connected (status: ${instance.status})`,
+      });
     }
 
     // Check if session exists in memory
-    const isSessionInMemory = whatsAppService.getActiveSessionNames().includes(instance.name);
-    console.log(`🧠 Session in memory check:`, { 
-      sessionName: instance.name, 
-      inMemory: isSessionInMemory 
+    const isSessionInMemory = whatsAppService
+      .getActiveSessionNames()
+      .includes(instance.name);
+    console.log(`🧠 Session in memory check:`, {
+      sessionName: instance.name,
+      inMemory: isSessionInMemory,
     });
 
     if (!isSessionInMemory) {
@@ -235,10 +237,9 @@ router.post('/instances/:id/send-message', async (req: TenantRequest, res) => {
 
         // Start the session
         await whatsAppService.createSession(instance.name, req.tenant!.id, '');
-        
-        return res.status(503).json({ 
+        return res.status(503).json({
           error: 'Session was disconnected and is being restarted. Please wait a moment and try again.',
-          action: 'reconnecting'
+          action: 'reconnecting',
         });
       } catch (error) {
         console.error(`❌ Failed to restart session:`, error);
@@ -246,8 +247,7 @@ router.post('/instances/:id/send-message', async (req: TenantRequest, res) => {
           where: { id: instance.id },
           data: { status: 'ERROR' },
         });
-        
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Failed to restart session. Please try connecting again.',
         });
       }
@@ -276,7 +276,6 @@ router.post('/instances/:id/send-message', async (req: TenantRequest, res) => {
       to: req.body.to,
       message: req.body.message?.substring(0, 50) + '...',
     });
-    
     res.status(500).json({ 
       error: 'Failed to send message',
       details: error.message,
@@ -322,7 +321,6 @@ router.get('/instances/status', async (req: TenantRequest, res) => {
     console.log(
       `📋 Getting all instances status for tenant: ${req.tenant!.id}`
     );
-    
     const instances = await prisma.whatsappInstance.findMany({
       where: { tenantId: req.tenant!.id },
       orderBy: { updatedAt: 'desc' },

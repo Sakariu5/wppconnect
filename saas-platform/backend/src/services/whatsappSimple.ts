@@ -246,7 +246,10 @@ export class WhatsAppService {
       const client = this.connections.get(sessionName);
       if (!client) {
         console.log(`❌ No client found for session: ${sessionName}`);
-        console.log(`📊 Available sessions:`, Array.from(this.connections.keys()));
+        console.log(
+          `📊 Available sessions:`,
+          Array.from(this.connections.keys())
+        );
         throw new Error(
           `WhatsApp session '${sessionName}' not found or not connected`
         );
@@ -262,19 +265,16 @@ export class WhatsAppService {
 
       // Format number for WhatsApp Web
       let formattedTo = to.replace(/\D/g, ''); // Remove non-digits
-      
       console.log(`🔧 Number formatting:`, {
         original: to,
         cleaned: formattedTo,
         hasAtSymbol: to.includes('@'),
-        isValidLength: formattedTo.length >= 10 && formattedTo.length <= 15
+        isValidLength: formattedTo.length >= 10 && formattedTo.length <= 15,
       });
-      
       // Add @c.us suffix if not present
       if (!formattedTo.includes('@')) {
         formattedTo = `${formattedTo}@c.us`;
       }
-      
       console.log(
         `📤 Sending ${type} message from ${sessionName} to ${formattedTo}: "${message}"`
       );
@@ -287,14 +287,24 @@ export class WhatsAppService {
           break;
         case 'image':
           if (mediaPath) {
-            result = await client.sendImage(formattedTo, mediaPath, 'image', message);
+            result = await client.sendImage(
+              formattedTo,
+              mediaPath,
+              'image',
+              message
+            );
           } else {
             throw new Error('Media path is required for image messages');
           }
           break;
         case 'document':
           if (mediaPath) {
-            result = await client.sendFile(formattedTo, mediaPath, 'document', message);
+            result = await client.sendFile(
+              formattedTo,
+              mediaPath,
+              'document',
+              message
+            );
           } else {
             throw new Error('Media path is required for document messages');
           }
@@ -313,7 +323,12 @@ export class WhatsAppService {
           break;
         case 'audio':
           if (mediaPath) {
-            result = await client.sendFile(formattedTo, mediaPath, 'audio', message);
+            result = await client.sendFile(
+              formattedTo,
+              mediaPath,
+              'audio',
+              message
+            );
           } else {
             throw new Error('Media path is required for audio messages');
           }
@@ -345,7 +360,6 @@ export class WhatsAppService {
     try {
       console.log(`📱 Handling QR code for session: ${sessionName}`);
       console.log(`QR Code length: ${qrCode.length}`);
-      
       const instance = await prisma.whatsappInstance.findFirst({
         where: {
           name: sessionName,
@@ -357,7 +371,6 @@ export class WhatsAppService {
         console.log(
           `✅ Found instance ${instance.id}, updating with QR code...`
         );
-        
         await prisma.whatsappInstance.update({
           where: { id: instance.id },
           data: {
@@ -525,14 +538,11 @@ export class WhatsAppService {
 
       if (instance) {
         console.log('�💾 About to store message for instance:', instance.id);
-        
         // Store message in database using the actual tenantId from the instance
         await this.storeMessage(message, instance.id, instance.tenantId);
-        
         console.log(
           `✅ Message processing completed for session ${sessionName}`
         );
-        
         // Emit message via WebSocket
         if (this.webSocketService) {
           this.webSocketService.emitToTenant(
@@ -561,7 +571,6 @@ export class WhatsAppService {
           'tenantId:',
           tenantId
         );
-        
         // List all instances for debugging
         const allInstances = await prisma.whatsappInstance.findMany({
           select: { id: true, name: true, tenantId: true },
@@ -813,7 +822,6 @@ export class WhatsAppService {
     }>
   > {
     const sessions = [];
-    
     for (const [sessionName, client] of this.connections) {
       try {
         const sessionInfo = {
@@ -837,7 +845,6 @@ export class WhatsAppService {
         });
       }
     }
-    
     return sessions;
   }
 
@@ -864,7 +871,6 @@ export class WhatsAppService {
         : message.from.replace('@c.us', '');
 
       console.log('📞 Processed phone number:', fromPhone);
-      
       // Find or create conversation
       let conversation = await prisma.conversation.findFirst({
         where: {
