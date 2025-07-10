@@ -25,7 +25,6 @@ import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -250,16 +249,6 @@ export function DashboardComponent() {
 
       {/* Main Content */}
       <main className="p-6 max-w-7xl mx-auto">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            ¡Bienvenido de nuevo, {user?.firstName}!
-          </h2>
-          <p className="text-gray-600">
-            Gestiona tus chatbots de WhatsApp desde aquí
-          </p>
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Columna Izquierda */}
           <div className="space-y-6">
@@ -270,9 +259,6 @@ export function DashboardComponent() {
                   <Phone className="h-5 w-5 mr-2" />
                   Conectar WhatsApp
                 </CardTitle>
-                <CardDescription>
-                  Conecta un nuevo número de WhatsApp
-                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Button 
@@ -294,9 +280,6 @@ export function DashboardComponent() {
                     <QrCode className="h-5 w-5 mr-2" />
                     Código QR Generado
                   </CardTitle>
-                  <CardDescription>
-                    Escanea este código con WhatsApp
-                  </CardDescription>
                 </CardHeader>
                 <CardContent className="text-center">
                   <div className="mb-4">
@@ -328,9 +311,6 @@ export function DashboardComponent() {
                     <Send className="h-5 w-5 mr-2" />
                     Enviar Mensaje Rápido
                   </CardTitle>
-                  <CardDescription>
-                    Envía un mensaje de prueba a cualquier contacto
-                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -455,12 +435,6 @@ export function DashboardComponent() {
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                   </Button>
                 </CardTitle>
-                <CardDescription>
-                  {selectedInstanceId 
-                    ? `Mensajes de la sesión seleccionada (${filteredMessages.length})`
-                    : `Últimos mensajes de todas tus instancias (${recentMessages.length})`
-                  }
-                </CardDescription>
               </CardHeader>
               <CardContent>
                 {(selectedInstanceId ? filteredMessages : recentMessages).length === 0 ? (
