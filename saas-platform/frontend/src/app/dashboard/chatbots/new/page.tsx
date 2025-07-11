@@ -54,6 +54,32 @@ function NewChatbotContent() {
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [steps, setSteps] = useState<ChatbotStep[]>([]);
   const [error, setError] = useState('');
+  const [triggerType, setTriggerType] = useState<'WELCOME' | 'KEYWORD' | 'EXACT_MESSAGE' | 'TIME_BASED'>('WELCOME');
+  const [triggerValue, setTriggerValue] = useState('');
+  const [whatsappInstanceId, setWhatsappInstanceId] = useState('');
+  const [instances, setInstances] = useState<any[]>([]);
+
+  // Cargar instancias de WhatsApp al montar
+  React.useEffect(() => {
+    const fetchInstances = async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const res = await fetch(`${apiUrl}/api/whatsapp/instances`, {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setInstances(data);
+        }
+      } catch (e) {
+        // Ignorar error
+      }
+    };
+    fetchInstances();
+  }, []);
 
   const addStep = (type: 'message' | 'question' | 'action') => {
     const newStep: ChatbotStep = {
@@ -94,15 +120,83 @@ function NewChatbotContent() {
     ));
   };
 
-  const saveChatbot = () => {
+  const saveChatbot = async () => {
+    setError('');
     if (!chatbotName.trim()) {
       setError('El nombre del chatbot es requerido');
       return;
     }
+    if (steps.length === 0) {
+      setError('Agrega al menos un paso al flujo de conversación');
+      return;
+    }
+    if (!whatsappInstanceId) {
+      setError('Selecciona una instancia de WhatsApp');
+      return;
+    }
+    if (!triggerType || !triggerValue) {
+      setError('Completa el tipo y valor de disparador');
+      return;
+    }
 
-    // Simular guardado
-    alert('¡Chatbot guardado exitosamente!');
-    router.push('/dashboard');
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
+      // 1. Crear el chatbot
+      const chatbotRes = await fetch(`${apiUrl}/api/chatbots`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          name: chatbotName,
+          description: chatbotDescription,
+          welcomeMessage,
+          triggerType,
+          triggerValue,
+          whatsappInstanceId
+        })
+      });
+
+      if (!chatbotRes.ok) {
+        const err = await chatbotRes.json();
+        throw new Error(err.error || 'Error al crear el chatbot');
+      }
+      const chatbot = await chatbotRes.json();
+
+      // 2. Crear los flujos (steps)
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const flowRes = await fetch(`${apiUrl}/api/chatbots/${chatbot.id}/flows`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            name: step.type === 'message' ? `Mensaje ${i+1}` : `Pregunta ${i+1}`,
+            stepOrder: i + 1,
+            stepType: step.type === 'question' ? 'RESPONSE' : 'TRIGGER',
+            triggerCondition: step.type === 'message' ? 'welcome' : undefined,
+            responseType: step.type === 'question' ? 'BUTTON' : 'TEXT',
+            responseContent: step.content,
+            buttons: step.type === 'question' ? step.responses?.filter(Boolean) : undefined,
+          })
+        });
+        if (!flowRes.ok) {
+          const err = await flowRes.json();
+          throw new Error(err.error || 'Error al crear el flujo');
+        }
+      }
+
+      // Éxito
+      alert('¡Chatbot guardado exitosamente!');
+      router.push('/dashboard/chatbots');
+    } catch (err: any) {
+      setError(err.message || 'Error al guardar el chatbot');
+    }
   };
 
   const testChatbot = () => {
@@ -178,6 +272,48 @@ function NewChatbotContent() {
                     onChange={(e) => setWelcomeMessage(e.target.value)}
                     placeholder="¡Hola! ¿En qué puedo ayudarte hoy?"
                   />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="triggerType">Tipo de Disparador</Label>
+                    <select
+                      id="triggerType"
+                      className="w-full border rounded p-2"
+                      value={triggerType}
+                      onChange={e => setTriggerType(e.target.value as any)}
+                    >
+                      <option value="WELCOME">Bienvenida</option>
+                      <option value="KEYWORD">Palabra clave</option>
+                      <option value="EXACT_MESSAGE">Mensaje exacto</option>
+                      <option value="TIME_BASED">Por horario</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="triggerValue">Valor del Disparador</Label>
+                    <Input
+                      id="triggerValue"
+                      value={triggerValue}
+                      onChange={e => setTriggerValue(e.target.value)}
+                      placeholder={triggerType === 'WELCOME' ? 'welcome' : 'Ej: hola, info, etc.'}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="whatsappInstanceId">Instancia de WhatsApp</Label>
+                    <select
+                      id="whatsappInstanceId"
+                      className="w-full border rounded p-2"
+                      value={whatsappInstanceId}
+                      onChange={e => setWhatsappInstanceId(e.target.value)}
+                    >
+                      <option value="">Selecciona una instancia</option>
+                      {instances.map(inst => (
+                        <option key={inst.id} value={inst.id}>
+                          {inst.sessionName || inst.id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </CardContent>
             </Card>

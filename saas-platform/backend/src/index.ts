@@ -26,6 +26,7 @@ import rateLimit from 'express-rate-limit';
 // Import routes
 import authRoutes from './routes/auth';
 import whatsappRoutes from './routes/whatsapp';
+import chatbotRoutes from './routes/chatbot';
 
 // Import middleware
 import { authMiddleware } from './middleware/auth';
@@ -102,6 +103,7 @@ app.get('/health', (req, res) => {
 // API routes with authentication and tenant middleware
 app.use('/api/auth', authRoutes);
 app.use('/api/whatsapp', authMiddleware, tenantMiddleware, whatsappRoutes);
+app.use('/api/chatbots', authMiddleware, tenantMiddleware, chatbotRoutes);
 
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));

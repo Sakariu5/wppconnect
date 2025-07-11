@@ -878,4 +878,49 @@ router.post('/instances/close-all', async (req: TenantRequest, res) => {
   }
 });
 
+// List all chats (conversations) for a WhatsApp instance
+router.get('/instances/:id/chats', async (req: TenantRequest, res) => {
+  try {
+    const { id: instanceId } = req.params;
+    // Verify instance belongs to tenant
+    const instance = await prisma.whatsappInstance.findFirst({
+      where: {
+        id: instanceId,
+        tenantId: req.tenant?.id,
+      },
+    });
+    if (!instance) {
+      return res.status(404).json({ error: 'WhatsApp instance not found' });
+    }
+
+    // Get all conversations for this instance
+    const conversations = await prisma.conversation.findMany({
+      where: { whatsappInstanceId: instanceId },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1, // Only last message for preview
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    // Map to dashboard-friendly format
+    const chats = conversations.map(conv => ({
+      id: conv.id,
+      contactPhone: conv.contactPhone,
+      contactName: conv.contactName,
+      type: conv.contactPhone?.endsWith('@g.us') ? 'group' : 'individual',
+      status: conv.status,
+      lastMessage: conv.messages[0]?.content || '',
+      lastMessageAt: conv.messages[0]?.createdAt || conv.updatedAt,
+    }));
+
+    res.json({ success: true, chats, total: chats.length });
+  } catch (error) {
+    console.error('Error fetching chats for instance:', error);
+    res.status(500).json({ error: 'Failed to fetch chats for instance' });
+  }
+});
+
 export default router;
