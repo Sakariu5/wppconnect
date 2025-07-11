@@ -70,12 +70,24 @@ function NewChatbotContent() {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           }
         });
-        if (res.ok) {
-          const data = await res.json();
-          setInstances(data);
+        if (!res.ok) {
+          const text = await res.text();
+          setError(`Error al cargar instancias: ${text}`);
+          console.error('Error al cargar instancias:', text);
+          return;
         }
+        let data;
+        try {
+          data = await res.json();
+        } catch (jsonErr) {
+          setError('Respuesta inválida del backend (no es JSON)');
+          console.error('Respuesta inválida del backend:', jsonErr);
+          return;
+        }
+        setInstances(data);
       } catch (e) {
-        // Ignorar error
+        setError('Error de red al cargar instancias');
+        console.error('Error de red al cargar instancias:', e);
       }
     };
     fetchInstances();
