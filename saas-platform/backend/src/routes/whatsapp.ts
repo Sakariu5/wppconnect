@@ -629,17 +629,17 @@ router.get('/messages/recent', async (req: TenantRequest, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 20;
     console.log('🔍 Recent messages request for tenant:', req.tenant?.id);
-    // Get all WhatsApp instances for the tenant
+    // Get all WhatsApp instances for the tenant with status CONNECTED
     const instances = await prisma.whatsappInstance.findMany({
-      where: { tenantId: req.tenant?.id },
+      where: { tenantId: req.tenant?.id, status: 'CONNECTED' },
       select: { id: true, name: true },
     });
 
-    console.log('📱 Found instances for tenant:', instances);
+    console.log('📱 Found CONNECTED instances for tenant:', instances);
     const instanceIds = instances.map((instance) => instance.id);
     console.log('🔗 Instance IDs:', instanceIds);
 
-    // Get recent messages from all conversations of tenant's instances
+    // Get recent messages from all conversations of tenant's active instances
     const recentMessages = await prisma.message.findMany({
       where: {
         conversation: {

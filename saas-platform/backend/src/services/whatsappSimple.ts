@@ -543,32 +543,29 @@ export class WhatsAppService {
       }
 
       if (instance) {
-        console.log('�💾 About to store message for instance:', instance.id);
-        // Store message in database using the actual tenantId from the instance
-        await this.storeMessage(message, instance.id, instance.tenantId);
-        console.log(
-          `✅ Message processing completed for session ${sessionName}`
-        );
-        // Emit message via WebSocket
-        if (this.webSocketService) {
-          this.webSocketService.emitToTenant(
-            instance.tenantId,
-            'new-whatsapp-message',
-            {
-              instanceId: sessionName,
-              message: {
-                id: message.id,
-                from: message.from,
-                to: message.to,
-                body: message.body,
-                type: message.type,
-                timestamp: message.timestamp || new Date(),
-              },
-            }
-          );
-          console.log('📡 Message emitted via WebSocket');
-        } else {
-          console.log('⚠️ WebSocket service not available');
+        // Solo responder si el número NO está registrado en la base de datos (nuevo lead)
+        const fromPhone = message.from.includes('@g.us')
+          ? message.from
+          : message.from.replace('@c.us', '');
+        const conversation = await prisma.conversation.findFirst({
+          where: {
+            contactPhone: fromPhone,
+            whatsappInstanceId: instance.id,
+          },
+        });
+        // Responder siempre al número de prueba
+        const testNumber = '5215549681111';
+        if (!conversation || fromPhone === testNumber) {
+          console.log('🤖 Activando respuesta GPT para lead o número de prueba:', fromPhone);
+          try {
+            const { getGPTReply } = await import('./gptService');
+            const gptReply = await getGPTReply(message.body);
+            // Enviar respuesta por WhatsApp
+            await this.sendMessage(sessionName, fromPhone, gptReply, 'text');
+            console.log(`✅ Respuesta GPT enviada a ${fromPhone}: "${gptReply}"`);
+          } catch (err) {
+            console.error('❌ Error GPT:', err);
+          }
         }
       } else {
         console.log(
@@ -691,7 +688,10 @@ export class WhatsAppService {
       }
 
       const hostDevice = await client.getHostDevice();
-      return hostDevice.wid.user || null;
+      if (hostDevice && hostDevice.wid && typeof hostDevice.wid.user === 'string') {
+        return hostDevice.wid.user;
+      }
+      return null;
     } catch (error) {
       console.error('Error getting session phone:', error);
       return null;
