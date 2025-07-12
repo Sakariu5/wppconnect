@@ -426,11 +426,8 @@ export function DashboardComponent() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-medium text-gray-900">
-                      Control de Instancias
+                      Instancia activa: <span className="font-semibold text-blue-700">{connectedInstances[0]?.name || 'Sin nombre'}</span>
                     </h3>
-                    <p className="text-sm text-gray-600">
-                      {connectedInstances.length} instancia{connectedInstances.length !== 1 ? 's' : ''} conectada{connectedInstances.length !== 1 ? 's' : ''}
-                    </p>
                   </div>
                   <Button 
                     variant="destructive"
