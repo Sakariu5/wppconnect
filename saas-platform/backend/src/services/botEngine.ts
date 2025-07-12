@@ -18,31 +18,86 @@ import { PrismaClient } from '@prisma/client';
 import { WhatsAppService } from './whatsapp';
 
 const prisma = new PrismaClient();
+/**
+ * Verifica si el número es nuevo (nunca ha mandado nada) y recupera mensajes previos si existen.
+ * @param contactPhone El número de WhatsApp en formato internacional
+ * @param whatsappInstanceId El ID de la instancia de WhatsApp
+ * @returns { isNew: boolean, conversation: any, messages: any[] }
+ */
+export async function getConversationStatus(contactPhone: string, whatsappInstanceId: string) {
+  // Busca si existe una conversación previa con ese número en la instancia
+  const conversation = await prisma.conversation.findFirst({
+    where: {
+      contactPhone,
+      whatsappInstanceId,
+    },
+    include: {
+      messages: true,
+    },
+  });
+
+  if (!conversation) {
+    // Es nuevo, no hay conversación previa
+    return { isNew: true, conversation: null, messages: [] };
+  }
+  // Ya existe conversación, retorna mensajes previos
+  return { isNew: false, conversation, messages: conversation.messages };
+}
 
 export class BotEngineService {
+  /**
+   * Procesa el mensaje recibido, integrando la lógica de nuevo número y recuperación de mensajes previos.
+   * @param message Mensaje recibido
+   * @param contactPhone Número del contacto
+   * @param whatsappInstanceId ID de la instancia de WhatsApp
+   * @param chatbots Lista de chatbots
+   * @param whatsAppService Servicio de WhatsApp
+   */
   async processMessage(
     message: any,
-    conversation: any,
+    contactPhone: string,
+    whatsappInstanceId: string,
     chatbots: any[],
     whatsAppService: WhatsAppService
   ) {
     try {
+      // Verifica si el número es nuevo y recupera mensajes previos
+      const { isNew, conversation, messages } = await getConversationStatus(contactPhone, whatsappInstanceId);
+
       // Find matching chatbot based on triggers
       const matchingBot = await this.findMatchingBot(message, chatbots);
-
       if (!matchingBot) return;
 
-      // Update conversation with chatbot
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { chatbotId: matchingBot.id },
-      });
+      let conv = conversation;
+      // Si no existe conversación, crearla
+      if (!conv) {
+        conv = await prisma.conversation.create({
+          data: {
+            contactPhone,
+            whatsappInstanceId,
+            chatbotId: matchingBot.id,
+            status: 'ACTIVE',
+          },
+        });
+      } else {
+        // Actualiza el chatbot asignado si ya existe
+        await prisma.conversation.update({
+          where: { id: conv.id },
+          data: { chatbotId: matchingBot.id },
+        });
+      }
+
+      // Si el número ya había conversado antes, puedes pasarle los mensajes previos al bot
+      // Ejemplo: message.history = messages;
+      if (!isNew) {
+        message.history = messages;
+      }
 
       // Process the bot flow
       await this.processBotFlow(
         matchingBot,
         message,
-        conversation,
+        conv,
         whatsAppService
       );
 
