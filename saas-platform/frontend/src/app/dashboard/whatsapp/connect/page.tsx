@@ -56,7 +56,6 @@ function ConnectWhatsAppContent() {
   }, []);
 
   const [step, setStep] = useState<'setup' | 'qr' | 'connecting' | 'connected' | 'error'>('setup');
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [sessionName, setSessionName] = useState('');
   const [error, setError] = useState('');
   const [qrCode, setQrCode] = useState('');
@@ -166,15 +165,11 @@ function ConnectWhatsAppContent() {
     }
   };
 
-  const handleSubmit = async (e: any) => {
-    e.preventDefault();
+  const handleConnectClick = async () => {
     setError('');
-    
-    if (!phoneNumber || !sessionName) {
-      setError('Por favor completa todos los campos');
-      return;
-    }
-
+    // Auto-generate session name
+    const generatedSessionName = `session${Date.now()}`;
+    setSessionName(generatedSessionName);
     try {
       // Create WhatsApp instance
       const instance = await createWhatsAppInstance();
@@ -182,7 +177,7 @@ function ConnectWhatsAppContent() {
 
       // Connect the instance
       await connectWhatsAppInstance(instance.id);
-      
+
       setStep('connecting');
 
       // Start polling for QR code and status
@@ -267,73 +262,38 @@ function ConnectWhatsAppContent() {
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Phone className="h-5 w-5 mr-2" />
-                Configuración de Número
+                Conectar WhatsApp
               </CardTitle>
               <CardDescription>
-                Proporciona los detalles de tu número de WhatsApp
+                Haz clic en el botón para generar tu código QR y conectar WhatsApp.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <Button className="w-full" onClick={handleConnectClick}>
+                <QrCode className="h-4 w-4 mr-2" />
+                Generar Código QR
+              </Button>
+              {/* Debug section */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                {instanceId && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full mt-2"
+                    onClick={async () => {
+                      console.log('Manual polling QR code...');
+                      await pollQRCodeAndStatus(instanceId);
+                    }}
+                  >
+                    🔄 Test QR Code Polling
+                  </Button>
                 )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="phoneNumber">Número de WhatsApp</Label>
-                  <Input
-                    id="phoneNumber"
-                    type="tel"
-                    placeholder="+1234567890"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    required
-                  />
-                  <p className="text-xs text-gray-500">
-                    Incluye el código de país (ej: +52 para México)
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="sessionName">Nombre de la Sesión</Label>
-                  <Input
-                    id="sessionName"
-                    type="text"
-                    placeholder="Mi WhatsApp Business"
-                    value={sessionName}
-                    onChange={(e) => setSessionName(e.target.value)}
-                    required
-                  />
-                  <p className="text-xs text-gray-500">
-                    Un nombre descriptivo para identificar esta conexión
-                  </p>
-                </div>
-
-                <Button type="submit" className="w-full">
-                  <QrCode className="h-4 w-4 mr-2" />
-                  Generar Código QR
-                </Button>
-                
-                {/* Debug section */}
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  
-                  {instanceId && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="w-full mt-2"
-                      onClick={async () => {
-                        console.log('Manual polling QR code...');
-                        await pollQRCodeAndStatus(instanceId);
-                      }}
-                    >
-                      🔄 Test QR Code Polling
-                    </Button>
-                  )}
-                </div>
-              </form>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -480,9 +440,6 @@ function ConnectWhatsAppContent() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   {sessionName}
                 </h3>
-                <p className="text-gray-600 mb-4">
-                  Número: {phoneNumber}
-                </p>
                 <p className="text-sm text-gray-500">
                   Ya puedes crear chatbots y automatizar conversaciones
                 </p>
